@@ -26,9 +26,14 @@ groupimg -f /home/user/Pictures/
 
 ## Parameters
 
-\-f folder where your images are (use absolute path). ```groupimg -f /home/user/Pictures```
-\-k number of folders you want to separate your images. ```groupimg -f /home/user/Pictures -k 5```
+\-f folder where your images are (use absolute path).
+```groupimg -f /home/user/Pictures```
+
+\-k number of folders you want to separate your images. 
+```groupimg -f /home/user/Pictures -k 5```
+
 \-m if you want to move your images instead of just copy them.
+
 \-s if you want the algorithm to consider the size of the images as a feature.
 
 ## To Do
