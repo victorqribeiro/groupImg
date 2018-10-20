@@ -10,7 +10,7 @@ Watch it working below.
 
 ## How to use
 
-Install the requiriments
+Install the requirements.txt
 
 ```
 pip install -r requirements.txt
