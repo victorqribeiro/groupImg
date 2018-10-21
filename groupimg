@@ -5,6 +5,7 @@
 import os
 import shutil
 import glob
+import math
 import argparse
 import warnings
 import numpy as np
@@ -30,7 +31,6 @@ class K_means:
     return s
 
   def euclidian_distance(self,x1,x2):
-    import math
     s = 0.0
     for i in range(len(x1)):
       s += math.sqrt((float(x1[i]) - float(x2[i])) ** 2)
