@@ -8,6 +8,10 @@ Watch it working below.
 
 [![groupImg](http://img.youtube.com/vi/LgzsJU-b34o/0.jpg)](http://www.youtube.com/watch?v=LgzsJU-b34o)
 
+## Why ?
+
+It was about one year since I made the switch from Windows to Linux, and I wanted to get better at the terminal. I always thought it was cool to master it. To make a long story short, one day I did mount a linux image on my external backup drive instead of the pen drive. Some basic */dev/sd\** confusion. Anyway's, I overwrited all my photos; so I used [Foremost](https://en.wikipedia.org/wiki/Foremost_(software)) (which is a great tool) to recover them. It recover 350.000 photos. So I wrote a little script to divide them in folders, 1000 photos per folder, if I'm not mistaken. I went through all the folders selecting the ones that were important from the ones that weren't. To end the story, I came up with this script to "cluster" the photos by similiraty and makes things a little easier for me.
+
 ## How to use
 
 Install the requirements.txt
