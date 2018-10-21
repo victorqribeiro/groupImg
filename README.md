@@ -43,3 +43,5 @@ Add multiprocessing
 Rewrite how the script handles the OS calls (find images, navigate to folders...)
 
 Add new ways to break down the image as features
+
+Test it cross platform
