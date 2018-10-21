@@ -118,7 +118,7 @@ k.generate_k_clusters(imagePaths,args["size"])
 
 k.rearrange_clusters()
 
-folder = args["folder"].replace(" ","\ ").replace("(","\(").replace(")","\)")
+folder = args["folder"]
 
 for i in range(k.k):
   os.makedirs(folder+""+'{:04}'.format(i+1))
