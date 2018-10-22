@@ -42,12 +42,12 @@ groupimg -f /home/user/Pictures/
 
 ## To Do
 
-Add multiprocessing
+~~Add multiprocessing~~
 
-Rewrite how the script handles the OS calls (find images, navigate to folders...)
+~~Rewrite how the script handles the OS calls (find images, navigate to folders...)~~
 
 Add new ways to break down the image as features
 
 Test it cross platform
 
-resample the image before processing it
+Resample the image before processing it
