@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 
-#coding: utf-8
-
 import os
 import shutil
 import glob
@@ -13,7 +11,6 @@ import matplotlib.image as mpimg
 from PIL import Image
 from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
-from multiprocessing import cpu_count
 
 Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter('ignore', Image.DecompressionBombWarning)
@@ -74,25 +71,28 @@ class K_means:
     return final_mean
 
   def generate_k_clusters(self,folder,size):
-    pool = ThreadPool(cpu_count())
+    pool = ThreadPool(os.cpu_count())
     self.size = size
     result = pool.map(self.read_image, folder)
     self.cluster = [r[0] for r in result if r[0]]
     self.data = [r[1] for r in result if r[1]]
     self.end = [r[2] for r in result if r[2]]
+    pool.close()
+    pool.join()
 
   def rearrange_clusters(self):
-    acabou = False
-    while(acabou == False):
-      acabou = True
+    isover = False
+    while(not isover):
+      isover = True
       m = self.generate_k_means()
       for x in range(len(self.cluster)):
         dist = []
         for a in range(self.k):
           dist.append( self.manhattan_distance(self.data[x],m[a]) )
-        if self.cluster[x] != dist.index(min(dist)) :
-          self.cluster[x] = dist.index(min(dist))
-          acabou = False
+        _mindist = dist.index(min(dist))
+        if self.cluster[x] != _mindist :
+          self.cluster[x] = _mindist
+          isover = False
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-f", "--folder", required=True, help="path to input dataset")
@@ -103,11 +103,17 @@ args = vars(ap.parse_args())
 
 types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
 imagePaths = []
-for files in types:
-  imagePaths.extend(sorted(glob.glob(args["folder"]+files)))
 
-if(len(imagePaths) <= 0):
-  print("Nenhuma imagem encontrada!")
+folder = args["folder"]
+
+if not folder.endswith("/") :
+  folder+="/"
+
+for files in types :
+  imagePaths.extend(sorted(glob.glob(folder+files)))
+
+if(len(imagePaths) <= 0) :
+  print("No images found!")
   exit()
 
 pbar = tqdm(total=len(imagePaths))
@@ -118,21 +124,20 @@ k.generate_k_clusters(imagePaths,args["size"])
 
 k.rearrange_clusters()
 
-folder = args["folder"]
+for i in range(k.k) :
+  try :
+    os.makedirs(folder+""+'{:04}'.format(i+1))
+  except :
+    print("Folder already exists")
 
-for i in range(k.k):
-  os.makedirs(folder+""+'{:04}'.format(i+1))
-
-cmd = 'cp'
+action = shutil.copy
 if args["move"] :
-  cmd = 'mv'
+  action = shutil.move
+
 
 for i in range(len(k.cluster)):
   src = k.end[i]
   dst = folder+"/"+'{:04}'.format(k.cluster[i]+1)+"/"
-  if args["move"] :
-    shutil.move(src, dst)
-  else :
-    shutil.copy(src, dst)
+  action(src, dst)
 
 
