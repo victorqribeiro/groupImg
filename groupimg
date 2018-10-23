@@ -112,11 +112,15 @@ if not folder.endswith("/") :
 for files in types :
   imagePaths.extend(sorted(glob.glob(folder+files)))
 
-if(len(imagePaths) <= 0) :
+nimages = len(imagePaths)
+
+if(nimages <= 0) :
   print("No images found!")
   exit()
 
-pbar = tqdm(total=len(imagePaths))
+nfolders = math.ceil(math.log10(nimages))+1
+
+pbar = tqdm(total=nimages)
 
 k = K_means(args["kmeans"])
 
@@ -126,7 +130,7 @@ k.rearrange_clusters()
 
 for i in range(k.k) :
   try :
-    os.makedirs(folder+""+'{:04}'.format(i+1))
+    os.makedirs(folder+str(i+1).zfill(nfolders))
   except :
     print("Folder already exists")
 
@@ -137,7 +141,7 @@ if args["move"] :
 
 for i in range(len(k.cluster)):
   src = k.end[i]
-  dst = folder+"/"+'{:04}'.format(k.cluster[i]+1)+"/"
+  dst = folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/"
   action(src, dst)
 
 
