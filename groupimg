@@ -11,6 +11,7 @@ import matplotlib.image as mpimg
 from PIL import Image
 from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
+from multiprocessing import cpu_count
 
 Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter('ignore')
@@ -71,7 +72,7 @@ class K_means:
     return final_mean
 
   def generate_k_clusters(self,folder,size):
-    pool = ThreadPool(os.cpu_count())
+    pool = ThreadPool(cpu_count())
     self.size = size
     result = pool.map(self.read_image, folder)
     pool.close()
@@ -138,10 +139,6 @@ action = shutil.copy
 if args["move"] :
   action = shutil.move
 
-
 for i in range(len(k.cluster)):
-  src = k.end[i]
-  dst = folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/"
-  action(src, dst)
-
+  action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
 
