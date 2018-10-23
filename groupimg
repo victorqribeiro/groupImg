@@ -13,7 +13,7 @@ from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
 
 Image.MAX_IMAGE_PIXELS = None
-warnings.simplefilter('ignore', Image.DecompressionBombWarning)
+warnings.simplefilter('ignore')
         
 class K_means:
 
