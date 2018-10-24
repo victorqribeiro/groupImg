@@ -46,12 +46,14 @@ class K_means:
       v = [float(p)/float(img.size)*100 for p in np.histogram(img)[0]]
       if self.size :
         v += [img.shape[0], img.shape[1]]
-      self.i += 1
       pbar.update(1)
-      return [self.i, v, im]
+      i = self.i
+      self.i += 1
+      return [i, v, im]
     except:
       print("Error reading ",im)
-      return [None,None,None]
+      return [None, None, None]
+
 
   def generate_k_means(self):
     final_mean = []
@@ -77,9 +79,9 @@ class K_means:
     result = pool.map(self.read_image, folder)
     pool.close()
     pool.join()
-    self.cluster = [r[0] for r in result if r[0]]
-    self.data = [r[1] for r in result if r[1]]
-    self.end = [r[2] for r in result if r[2]]
+    self.cluster = [r[0] for r in result if r[0] != None]
+    self.data = [r[1] for r in result if r[1] != None]
+    self.end = [r[2] for r in result if r[2] != None]
 
   def rearrange_clusters(self):
     isover = False
