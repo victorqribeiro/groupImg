@@ -120,8 +120,12 @@ for files in types :
 
 nimages = len(imagePaths)
 
-if(nimages <= 0) :
+if nimages <= 0 :
   print("No images found!")
+  exit()
+
+if args["resample"] < 16 or args["resample"] > 256 :
+  print("-r should be a value between 16 and 256")
   exit()
 
 nfolders = math.ceil(math.log10(nimages))+1
