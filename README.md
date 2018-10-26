@@ -6,7 +6,7 @@ It uses a [k-means](https://en.wikipedia.org/wiki/K-means_clustering) algorithm 
 
 Watch it working below.
 
-[![groupImg](http://img.youtube.com/vi/LgzsJU-b34o/0.jpg)](http://www.youtube.com/watch?v=LgzsJU-b34o)
+[![groupImg](http://img.youtube.com/vi/M6ntIaynKCg/0.jpg)](http://www.youtube.com/watch?v=M6ntIaynKCg)
 
 ## Why ?
 
