@@ -42,10 +42,12 @@ class K_means:
     if self.i >= self.k :
       self.i = 0
     try:
-      img = mpimg.imread(im)
-      v = [float(p)/float(img.size)*100 for p in np.histogram(img)[0]]
+      img = Image.open(im)
+      osize = img.size
+      img.thumbnail((128,128))
+      v = [float(p)/float(img.size[0]*img.size[1])*100  for p in np.histogram(np.asarray(img))[0]]
       if self.size :
-        v += [img.shape[0], img.shape[1]]
+        v += [osize[0], osize[1]]
       pbar.update(1)
       i = self.i
       self.i += 1
