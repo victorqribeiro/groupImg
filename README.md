@@ -14,18 +14,20 @@ It was about one year since I made the switch from Windows to Linux, and I wante
 
 ## How to use
 
+Navigate to the folder you want. CLI - Command Line Interface or GUI - Graphic User Interface
+
 Install the requirements.txt
 
 ```
 pip install -r requirements.txt
 ```
 
-Add the *groupimg* to your scripts folder and give it execute permission.
+### CLI
 
 Call the script passing the image folder you want to organize.
 
 ```
-groupimg -f /home/user/Pictures/
+python groupimg.py -f /home/user/Pictures/
 ```
 
 ## Parameters
@@ -40,16 +42,21 @@ groupimg -f /home/user/Pictures/
 
 \-s if you want the algorithm to consider the size of the images as a feature.
 
-## To Do
+### GUI
 
-~~Add multiprocessing~~
+Just call the groupImgGUI.py file.
 
-~~Rewrite how the script handles the OS calls (find images, navigate to folders...)~~
+```
+python groupImgGUI.py
+```
+You can adjust the settings by checking the settings box.
 
-Add new ways to break down the image as features
+N. Group - How many groups should the images be separated in
 
-Test it cross platform
+Resample - Size to resample the image before comparing (small sizes gives fast results)
 
-~~Resample the image before processing it~~
+Move - Move the images instead of copy them (useful if you have low space on your hard drive)
+
+Size - Consider the size of the images to organize them (useful if you want to separate thumbnails from real pictures)
 
 [![Donations](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=victorqribeiro%40gmail%2ecom&lc=BR&item_name=Victor%20Ribeiro&item_number=donation&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
