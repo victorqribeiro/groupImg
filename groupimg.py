@@ -15,10 +15,10 @@ from multiprocessing import cpu_count
 
 Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter('ignore')
-        
+
 class K_means:
 
-  def __init__(self, k=3, size=False, resample=32, GUI=False):
+  def __init__(self, k=3, size=False, resample=32):
     self.k = k
     self.cluster = []
     self.data = []
@@ -26,7 +26,6 @@ class K_means:
     self.i = 0
     self.size = size
     self.resample = resample
-    self.GUI = GUI
 
   def manhattan_distance(self,x1,x2):
     s = 0.0
@@ -50,8 +49,7 @@ class K_means:
       v = [float(p)/float(img.size[0]*img.size[1])*100  for p in np.histogram(np.asarray(img))[0]]
       if self.size :
         v += [osize[0], osize[1]]
-      if not self.GUI :
-      	pbar.update(1)
+      pbar.update(1)
       i = self.i
       self.i += 1
       return [i, v, im]
@@ -101,59 +99,52 @@ class K_means:
           self.cluster[x] = _mindist
           isover = False
 
-def main() :
-	ap = argparse.ArgumentParser()
-	ap.add_argument("-f", "--folder", required=True, help="path to image folder")
-	ap.add_argument("-k", "--kmeans", type=int, default=5, help="how many groups")
-	ap.add_argument("-r", "--resample", type=int, default=128, help="size to resample the image by")
-	ap.add_argument("-s", "--size", default=False, action="store_true", help="use size to compare images")
-	ap.add_argument("-m", "--move", default=False, action="store_true", help="move instead of copy")
-	args = vars(ap.parse_args())
+ap = argparse.ArgumentParser()
+ap.add_argument("-f", "--folder", required=True, help="path to image folder")
+ap.add_argument("-k", "--kmeans", type=int, default=5, help="how many groups")
+ap.add_argument("-r", "--resample", type=int, default=128, help="size to resample the image by")
+ap.add_argument("-s", "--size", default=False, action="store_true", help="use size to compare images")
+ap.add_argument("-m", "--move", default=False, action="store_true", help="move instead of copy")
+args = vars(ap.parse_args())
 
-	types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
-	imagePaths = []
+types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
+imagePaths = []
 
-	folder = args["folder"]
+folder = args["folder"]
 
-	if not folder.endswith("/") :
-		folder+="/"
+if not folder.endswith("/") :
+	folder+="/"
 
-	for files in types :
-		imagePaths.extend(sorted(glob.glob(folder+files)))
+for files in types :
+	imagePaths.extend(sorted(glob.glob(folder+files)))
 
-	nimages = len(imagePaths)
+nimages = len(imagePaths)
 
-	if nimages <= 0 :
-		print("No images found!")
-		exit()
+if nimages <= 0 :
+	print("No images found!")
+	exit()
 
-	if args["resample"] < 16 or args["resample"] > 256 :
-		print("-r should be a value between 16 and 256")
-		exit()
+if args["resample"] < 16 or args["resample"] > 256 :
+	print("-r should be a value between 16 and 256")
+	exit()
 
-	nfolders = math.ceil(math.log10(nimages))+1
+pbar = tqdm(total=nimages)
 
-	pbar = tqdm(total=nimages)
+k = K_means(args["kmeans"],args["size"],args["resample"])
 
-	k = K_means(args["kmeans"],args["size"],args["resample"])
+k.generate_k_clusters(imagePaths)
 
-	k.generate_k_clusters(imagePaths)
+k.rearrange_clusters()
 
-	k.rearrange_clusters()
+for i in range(k.k) :
+	try :
+	  os.makedirs(folder+str(i+1).zfill(args["kmeans"]))
+	except :
+	  print("Folder already exists")
 
-	for i in range(k.k) :
-		try :
-		  os.makedirs(folder+str(i+1).zfill(nfolders))
-		except :
-		  print("Folder already exists")
+action = shutil.copy
+if args["move"] :
+	action = shutil.move
 
-	action = shutil.copy
-	if args["move"] :
-		action = shutil.move
-
-	for i in range(len(k.cluster)):
-		action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
-
-if __name__ == "__main__" :
-	main()
-
+for i in range(len(k.cluster)):
+	action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(args["kmeans"])+"/")
