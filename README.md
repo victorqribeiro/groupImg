@@ -44,6 +44,8 @@ python groupimg.py -f /home/user/Pictures/
 
 ### GUI
 
+![groupImgGUI](screenshot-GUI.png)
+
 Just call the groupImgGUI.py file.
 
 ```
