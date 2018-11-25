@@ -3,12 +3,9 @@ import sys
 import shutil
 import glob
 import math
-import argparse
-import warnings
 import numpy as np
 import matplotlib.image as mpimg
 from PIL import Image
-from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import cpu_count
 from PySide2.QtCore import *
@@ -160,7 +157,6 @@ class groupImgGUI(QWidget) :
 		QFileDialog.FileMode(QFileDialog.Directory)
 		self.dir = QFileDialog.getExistingDirectory(self)
 		self.btn.setText(self.dir or "Select folder")
-		#QMessageBox.information(self, "fichier", 'oi')
 		
 	def state(self) :
 		if self.check.isChecked() :
@@ -168,7 +164,16 @@ class groupImgGUI(QWidget) :
 		else:
 			self.formGroupBox.hide()
 	
+	def disableButton(self) :
+		self.runbtn.setText("Working...")
+		self.runbtn.setEnabled(False)
+	
+	def enableButton(self) :		
+		self.runbtn.setText("Run")
+		self.runbtn.setEnabled(True)
+			
 	def run(self) :
+		self.disableButton()
 		types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
 		imagePaths = []
 
@@ -182,9 +187,14 @@ class groupImgGUI(QWidget) :
 
 		nimages = len(imagePaths)
 
+		nfolders = int(math.log(self.kmeans.value(), 10))+1
+		
+		print(nfolders)
+
 		if nimages <= 0 :
-			print("No images found!")
-			exit()
+			QMessageBox.warning(self, "Error", 'No images found!')
+			self.enableButton()
+			return
 		
 		k = K_means(self.kmeans.value(),self.size.isChecked(),self.sample.value())
 
@@ -194,7 +204,7 @@ class groupImgGUI(QWidget) :
 
 		for i in range(k.k) :
 			try :
-				os.makedirs(folder+str(i+1).zfill(self.kmeans.value()))
+				os.makedirs(folder+str(i+1).zfill(nfolders))
 			except Exception as e :
 				print("Folder already exists", e)
 
@@ -203,8 +213,10 @@ class groupImgGUI(QWidget) :
 			action = shutil.move
 
 		for i in range(len(k.cluster)):
-			action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(self.kmeans.value())+"/")
+			action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
 
+		QMessageBox.information(self, "Done", 'Done!')
+		self.enableButton()
 	
 def main():
    app = QApplication(sys.argv)

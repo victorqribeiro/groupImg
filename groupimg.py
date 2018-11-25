@@ -120,6 +120,8 @@ for files in types :
 
 nimages = len(imagePaths)
 
+nfolders = int(math.log(args["kmeans"], 10))+1
+
 if nimages <= 0 :
 	print("No images found!")
 	exit()
@@ -138,7 +140,7 @@ k.rearrange_clusters()
 
 for i in range(k.k) :
 	try :
-	  os.makedirs(folder+str(i+1).zfill(args["kmeans"]))
+	  os.makedirs(folder+str(i+1).zfill(nfolders))
 	except :
 	  print("Folder already exists")
 
@@ -147,4 +149,4 @@ if args["move"] :
 	action = shutil.move
 
 for i in range(len(k.cluster)):
-	action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(args["kmeans"])+"/")
+	action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
