@@ -3,6 +3,7 @@ import sys
 import shutil
 import glob
 import math
+import warnings
 import numpy as np
 import matplotlib.image as mpimg
 from PIL import Image
@@ -12,9 +13,12 @@ from PySide2.QtCore import *
 from PySide2.QtGui import *
 from PySide2.QtWidgets import *
 
+Image.MAX_IMAGE_PIXELS = None
+warnings.simplefilter('ignore')
+
 class K_means:
 
-  def __init__(self, k=3, size=False, resample=32):
+  def __init__(self, k=3, size=False, resample=128):
     self.k = k
     self.cluster = []
     self.data = []
@@ -96,40 +100,25 @@ class K_means:
 
 class groupImgGUI(QWidget) :
 
-	def __init__(self, parent = None) :
-		
-		super(groupImgGUI, self).__init__(parent)
-		
-		self.dir = None
-		
-		self.progressValue = 0
-		
-		self.createSettings()
-		
+	def __init__(self, parent = None) :		
+		super(groupImgGUI, self).__init__(parent)	
+		self.dir = None		
+		self.progressValue = 0		
+		self.createSettings()		
 		layout = QVBoxLayout()
 		self.btn = QPushButton("Select folder")
-		self.btn.clicked.connect(self.selectFolder)
-		
-		layout.addWidget(self.btn)
-		
+		self.btn.clicked.connect(self.selectFolder)			
 		self.check = QCheckBox("Settings")
-		self.check.stateChanged.connect(self.state);
-		
+		self.check.stateChanged.connect(self.state);		
 		self.runbtn = QPushButton("Run")
-		self.runbtn.clicked.connect(self.run)
-		
+		self.runbtn.clicked.connect(self.run)	
 		self.progress = QProgressBar(self)
 		self.progress.hide()
-		
-		layout.addWidget(self.check)
-		
-		layout.addWidget(self.formGroupBox)
-		
-		layout.addWidget(self.progress)
-		
-		layout.addWidget(self.runbtn)
-		
-		
+		layout.addWidget(self.btn)
+		layout.addWidget(self.check)		
+		layout.addWidget(self.formGroupBox)	
+		layout.addWidget(self.progress)	
+		layout.addWidget(self.runbtn)	
 		self.setMinimumSize(300,300)
 		self.setLayout(layout)
 		self.setWindowTitle("groupImg - GUI")
@@ -140,15 +129,15 @@ class groupImgGUI(QWidget) :
 		self.kmeans = QSpinBox()
 		self.kmeans.setRange(3,15)
 		self.kmeans.setValue(3)
-		layout.addRow(QLabel("k-means:"), self.kmeans)
 		self.sample = QSpinBox()
 		self.sample.setRange(32, 256)
 		self.sample.setValue(128)
 		self.sample.setSingleStep(2)
-		layout.addRow(QLabel("Sample:"), self.sample)
 		self.move = QCheckBox()
-		layout.addRow(QLabel("Move:"), self.move)
 		self.size = QCheckBox()
+		layout.addRow(QLabel("N. Groups:"), self.kmeans)
+		layout.addRow(QLabel("Resample:"), self.sample)
+		layout.addRow(QLabel("Move:"), self.move)
 		layout.addRow(QLabel("Size:"), self.size)
 		self.formGroupBox.hide()
 		self.formGroupBox.setLayout(layout)
@@ -176,52 +165,37 @@ class groupImgGUI(QWidget) :
 		self.disableButton()
 		types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
 		imagePaths = []
-
 		folder = self.dir
-
 		if not folder.endswith("/") :
 			folder+="/"
-
 		for files in types :
 			imagePaths.extend(sorted(glob.glob(folder+files)))
-
 		nimages = len(imagePaths)
-
-		nfolders = int(math.log(self.kmeans.value(), 10))+1
-		
-		print(nfolders)
-
+		nfolders = int(math.log(self.kmeans.value(), 10))+1		
 		if nimages <= 0 :
 			QMessageBox.warning(self, "Error", 'No images found!')
 			self.enableButton()
-			return
-		
+			return		
 		k = K_means(self.kmeans.value(),self.size.isChecked(),self.sample.value())
-
 		k.generate_k_clusters(imagePaths)
-
 		k.rearrange_clusters()
-
 		for i in range(k.k) :
 			try :
 				os.makedirs(folder+str(i+1).zfill(nfolders))
 			except Exception as e :
 				print("Folder already exists", e)
-
 		action = shutil.copy
 		if self.move.isChecked() :
 			action = shutil.move
-
 		for i in range(len(k.cluster)):
 			action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
-
 		QMessageBox.information(self, "Done", 'Done!')
 		self.enableButton()
 	
 def main():
    app = QApplication(sys.argv)
-   ex = groupImgGUI()
-   ex.show()
+   groupimg = groupImgGUI()
+   groupimg.show()
    sys.exit(app.exec_())
 	
 if __name__ == '__main__':

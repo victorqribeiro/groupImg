@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 import os
 import shutil
 import glob
@@ -106,47 +104,32 @@ ap.add_argument("-r", "--resample", type=int, default=128, help="size to resampl
 ap.add_argument("-s", "--size", default=False, action="store_true", help="use size to compare images")
 ap.add_argument("-m", "--move", default=False, action="store_true", help="move instead of copy")
 args = vars(ap.parse_args())
-
 types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
 imagePaths = []
-
 folder = args["folder"]
-
 if not folder.endswith("/") :
 	folder+="/"
-
 for files in types :
 	imagePaths.extend(sorted(glob.glob(folder+files)))
-
 nimages = len(imagePaths)
-
 nfolders = int(math.log(args["kmeans"], 10))+1
-
 if nimages <= 0 :
 	print("No images found!")
 	exit()
-
 if args["resample"] < 16 or args["resample"] > 256 :
 	print("-r should be a value between 16 and 256")
 	exit()
-
 pbar = tqdm(total=nimages)
-
 k = K_means(args["kmeans"],args["size"],args["resample"])
-
 k.generate_k_clusters(imagePaths)
-
 k.rearrange_clusters()
-
 for i in range(k.k) :
 	try :
 	  os.makedirs(folder+str(i+1).zfill(nfolders))
 	except :
 	  print("Folder already exists")
-
 action = shutil.copy
 if args["move"] :
 	action = shutil.move
-
 for i in range(len(k.cluster)):
 	action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
