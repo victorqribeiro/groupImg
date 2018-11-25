@@ -51,14 +51,17 @@ Just call the groupImgGUI.py file.
 ```
 python groupImgGUI.py
 ```
+
+Click the button Select folder to select the folder with the pictures you want to organize.
+
 You can adjust the settings by checking the settings box.
 
-N. Group - How many groups should the images be separated in
+N. Group - How many groups should the images be separated in.
 
-Resample - Size to resample the image before comparing (small sizes gives fast results)
+Resample - Size to resample the image before comparing (small sizes gives fast results).
 
-Move - Move the images instead of copy them (useful if you have low space on your hard drive)
+Move - Move the images instead of copy them (useful if you have low space on your hard drive).
 
-Size - Consider the size of the images to organize them (useful if you want to separate thumbnails from real pictures)
+Size - Consider the size of the images to organize them (useful if you want to separate thumbnails from real pictures).
 
 [![Donations](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=victorqribeiro%40gmail%2ecom&lc=BR&item_name=Victor%20Ribeiro&item_number=donation&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
