@@ -5,7 +5,6 @@ import math
 import argparse
 import warnings
 import numpy as np
-import matplotlib.image as mpimg
 from PIL import Image
 from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool

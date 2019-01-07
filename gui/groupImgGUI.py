@@ -5,7 +5,6 @@ import glob
 import math
 import warnings
 import numpy as np
-import matplotlib.image as mpimg
 from PIL import Image
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import cpu_count
