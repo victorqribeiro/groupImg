@@ -123,12 +123,13 @@ k = K_means(args["kmeans"],args["size"],args["resample"])
 k.generate_k_clusters(imagePaths)
 k.rearrange_clusters()
 for i in range(k.k) :
+	currentFolder = folder+"/"+str(i+1).zfill(nfolders)
 	try :
-	  os.makedirs(folder+"/"+str(i+1).zfill(nfolders))
+	  os.makedirs(currentFolder)
 	except FileExistsError:
-	  print("Folder already exists")
+	  print("Folder '" + currentFolder + "' already exists")
 	except Exception as e:
-	  print("An errror occurred creating folder '" + folder+str(i+1).zfill(nfolders) + "': " + e)
+	  print("An errror occurred creating folder '" + currentFolder + "': " + e)
 action = shutil.copy
 if args["move"] :
 	action = shutil.move
