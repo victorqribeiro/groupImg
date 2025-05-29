@@ -106,10 +106,8 @@ args = vars(ap.parse_args())
 types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
 imagePaths = []
 folder = args["folder"]
-if not folder.endswith("/") :
-	folder+="/"
 for files in types :
-	imagePaths.extend(sorted(glob.glob(folder+files)))
+	imagePaths.extend(sorted(glob.glob(os.path.join(folder+files))))
 nimages = len(imagePaths)
 nfolders = int(math.log(args["kmeans"], 10))+1
 if nimages <= 0 :
@@ -123,7 +121,7 @@ k = K_means(args["kmeans"],args["size"],args["resample"])
 k.generate_k_clusters(imagePaths)
 k.rearrange_clusters()
 for i in range(k.k) :
-	currentFolder = folder+"/"+str(i+1).zfill(nfolders)
+	currentFolder = os.path.join(folder, str(i+1).zfill(nfolders))
 	try :
 	  os.makedirs(currentFolder)
 	except FileExistsError:
@@ -134,4 +132,4 @@ action = shutil.copy
 if args["move"] :
 	action = shutil.move
 for i in range(len(k.cluster)):
-	action(k.end[i], folder+"/"+str(k.cluster[i]+1).zfill(nfolders)+"/")
+	action(k.end[i], os.path.join(folder, str(k.cluster[i]+1).zfill(nfolders)+"/"))
