@@ -123,11 +123,11 @@ k.rearrange_clusters()
 for i in range(k.k) :
 	currentFolder = os.path.join(folder, str(i+1).zfill(nfolders))
 	try :
-	  os.makedirs(currentFolder)
+		os.makedirs(currentFolder)
 	except FileExistsError:
-	  print("Folder '" + currentFolder + "' already exists")
+		print("Folder '" + currentFolder + "' already exists")
 	except Exception as e:
-	  print("An errror occurred creating folder '" + currentFolder + "': " + e)
+		print("An errror occurred creating folder '" + currentFolder + "': " + e)
 action = shutil.copy
 if args["move"] :
 	action = shutil.move
