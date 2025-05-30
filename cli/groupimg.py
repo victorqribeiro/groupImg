@@ -128,7 +128,7 @@ for i in range(k.k) :
 		print("Folder '" + currentFolder + "' already exists")
 	except Exception as e:
 		print("An errror occurred creating folder '" + currentFolder + "': " + e)
-action = shutil.copy
+action = shutil.copy2
 if args["move"] :
 	action = shutil.move
 for i in range(len(k.cluster)):
