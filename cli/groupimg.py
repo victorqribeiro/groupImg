@@ -119,6 +119,7 @@ if args["resample"] < 16 or args["resample"] > 256 :
 pbar = tqdm(total=nimages)
 k = K_means(args["kmeans"],args["size"],args["resample"])
 k.generate_k_clusters(imagePaths)
+pbar.close()
 k.rearrange_clusters()
 for i in range(k.k) :
 	currentFolder = os.path.join(folder, str(i+1).zfill(nfolders))
