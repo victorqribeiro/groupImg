@@ -1,0 +1,1 @@
+per 12MP image: 67 ms
