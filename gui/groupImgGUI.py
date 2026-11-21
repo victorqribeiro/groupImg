@@ -8,9 +8,9 @@ import numpy as np
 from PIL import Image, ImageOps, ExifTags
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import cpu_count
-from PySide2.QtCore import *
-from PySide2.QtGui import *
-from PySide2.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 
 Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter('ignore')
@@ -315,7 +315,6 @@ class groupImgGUI(QWidget) :
 		self.formGroupBox.setLayout(layout)
 		
 	def selectFolder(self) :
-		QFileDialog.FileMode(QFileDialog.Directory)
 		self.dir = QFileDialog.getExistingDirectory(self)
 		self.btn.setText(self.dir or "Select folder")
 		
@@ -334,6 +333,9 @@ class groupImgGUI(QWidget) :
 		self.runbtn.setEnabled(True)
 			
 	def run(self) :
+		if not self.dir :
+			QMessageBox.warning(self, "Error", 'Select a folder first!')
+			return
 		self.disableButton()
 		folder = self.dir
 		if not folder.endswith("/") :
@@ -365,7 +367,7 @@ def main():
    app = QApplication(sys.argv)
    groupimg = groupImgGUI()
    groupimg.show()
-   sys.exit(app.exec_())
+   sys.exit(app.exec())
 	
 if __name__ == '__main__':
    main()
