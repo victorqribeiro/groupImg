@@ -3,6 +3,7 @@
 A python script to organize your images by similarity.
 
 It uses a [k-means](https://en.wikipedia.org/wiki/K-means_clustering) algorithm to separatem them in clusters.
+Images are compared by their colors (over the whole image and in its top, middle and bottom thirds), their edges and their texture. [benchmarks/features](benchmarks/features/README.md) has how that was chosen.
 
 Watch it working below.
 
@@ -40,7 +41,7 @@ python groupimg.py -f /home/user/Pictures/
 
 \-m if you want to move your images instead of just copy them.
 
-\-s if you want the algorithm to consider the size of the images as a feature.
+\-s if you want the algorithm to consider the size of the images (area and aspect ratio) as a feature.
 
 ### GUI
 

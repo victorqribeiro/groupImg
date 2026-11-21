@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>groupImg judging, round __ROUND__</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f3f3f1;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --muted: #5d5d64;
+  --line: #d6d6d2;
+  --accent: #1f56cc;
+  --accent-soft: #dde7fb;
+  /* neutral gray around images in both themes, so it doesn't tint them */
+  --cell: #808080;
+  font: 15px/1.45 system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161618;
+    --surface: #232326;
+    --text: #ececee;
+    --muted: #a5a5ac;
+    --line: #3b3b40;
+    --accent: #8aabff;
+    --accent-soft: #26314d;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+header {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem;
+  padding: .55rem 1rem; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+h1 { font-size: 1rem; margin: 0; }
+nav { display: flex; gap: .25rem; }
+nav a { color: inherit; text-decoration: none; padding: .3rem .7rem; border-radius: .4rem; border: 1px solid transparent; }
+nav a[aria-current="page"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+#status { margin-inline-start: auto; color: var(--muted); font-size: .9rem; }
+button { font: inherit; color: inherit; }
+.btn { padding: .35rem .8rem; border: 1px solid var(--line); border-radius: .4rem; background: var(--surface); cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+main { padding: 1rem; max-width: 1440px; margin: 0 auto; }
+h2 { font-size: 1.15rem; margin: .25rem 0 .25rem; }
+.help { color: var(--muted); margin: 0 0 1rem; max-width: 70ch; }
+kbd { font: inherit; font-size: .85em; padding: 0 .3em; border: 1px solid var(--line); border-radius: .25rem; }
+
+.cell { display: block; width: var(--s, 120px); height: var(--s, 120px); object-fit: contain; background: var(--cell); }
+
+/* neighbors */
+.qbar { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
+.query { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.query figure { margin: 0; }
+.query figcaption { color: var(--muted); font-size: .85rem; margin-top: .25rem; }
+.big { --s: 280px; }
+.rows { display: grid; gap: .5rem; }
+.row {
+  display: flex; align-items: center; gap: 4px; padding: .35rem;
+  border: 2px solid var(--line); border-radius: .5rem; background: var(--surface); cursor: pointer;
+}
+.row:hover { border-color: var(--muted); }
+.row[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.row .key { inline-size: 2.2rem; text-align: center; font-weight: 600; font-size: 1.1rem; }
+.row[aria-pressed="true"] .key::after { content: "✓"; display: block; font-size: .9rem; }
+.tie { justify-self: start; }
+.tie[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+
+/* groups */
+.jump { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin-bottom: 1rem; }
+.jump a { color: inherit; }
+.pick {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.5rem; margin: 0 0 1rem;
+  padding: .5rem .9rem .7rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface);
+}
+.pick legend { font-weight: 600; padding-inline: .3rem; }
+.pick label { display: flex; align-items: center; gap: .35rem; cursor: pointer; }
+.pick input { inline-size: 1.1rem; block-size: 1.1rem; margin: 0; }
+.option { margin-block: 1.5rem 2.5rem; scroll-margin-top: 3.5rem; }
+.option h3 {
+  position: sticky; top: 3.1rem; z-index: 1; display: flex; align-items: center; gap: 1rem;
+  margin: 0; padding: .4rem 0; background: var(--bg); font-size: 1.05rem;
+}
+.option label { font-weight: normal; font-size: .95rem; }
+.group { display: flex; gap: .75rem; padding: .45rem 0; border-top: 1px solid var(--line); }
+.group .count { inline-size: 4.5rem; flex: none; color: var(--muted); font-size: .9rem; }
+.gimgs { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.gimgs .cell { --s: 72px; }
+.gimgs .sep, .row .sep { writing-mode: vertical-rl; transform: rotate(180deg); color: var(--muted); font-size: .75rem; padding-inline: 2px; border-inline-start: 2px dashed var(--muted); margin-inline-start: 6px; }
+
+/* results */
+.scroll { overflow-x: auto; margin-top: 1rem; }
+table { border-collapse: collapse; }
+th, td { padding: .35rem .7rem; border-bottom: 1px solid var(--line); text-align: end; white-space: nowrap; }
+th { white-space: normal; vertical-align: bottom; min-inline-size: 5rem; }
+th:first-child, td:first-child, td.spec { text-align: start; }
+td.spec { font-family: ui-monospace, monospace; font-size: .85rem; white-space: normal; }
+.note { color: var(--muted); font-size: .9rem; max-width: 80ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Round __ROUND__</h1>
+  <nav aria-label="Steps">
+    <a href="#neighbors">1. Neighbors</a>
+    <a href="#groups">2. Groups</a>
+    <a href="#results">3. Results</a>
+  </nav>
+  <span id="status" role="status"></span>
+  <button type="button" class="btn" id="download" hidden>Download votes</button>
+</header>
+<main>
+  <section id="neighbors-view" aria-labelledby="neighbors-title">
+    <h2 id="neighbors-title">Neighbors</h2>
+    <p class="help">Each row shows the 8 images one option thinks are closest to the image on the left.
+      Images both rows share come first, in the same places; the ones after the divider differ.
+      Pick the row that looks most like it: click it or press <kbd>1</kbd>–<kbd id="maxkey">4</kbd>,
+      <kbd>T</kbd> for a tie. <kbd>←</kbd> <kbd>→</kbd> move between images. Row order is shuffled for every image.<span id="pick-note"></span></p>
+    <div class="qbar">
+      <button type="button" class="btn" id="prev">← Previous</button>
+      <span id="qcount"></span>
+      <button type="button" class="btn" id="next">Next →</button>
+    </div>
+    <div class="query" id="query"></div>
+  </section>
+
+  <section id="groups-view" aria-labelledby="groups-title" hidden>
+    <h2 id="groups-title">Groups</h2>
+    <p class="help" id="groups-help"></p>
+    <fieldset class="pick" id="pick"><legend>Which option's groups look better overall?</legend></fieldset>
+    <div class="jump" id="jump"></div>
+    <div id="options"></div>
+  </section>
+
+  <section id="results-view" aria-labelledby="results-title" hidden>
+    <h2 id="results-title">Results</h2>
+    <p id="progress"></p>
+    <button type="button" class="btn" id="reveal">Reveal which option is which</button>
+    <div id="revealed"></div>
+  </section>
+</main>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+const data = JSON.parse(document.getElementById('data').textContent);
+const LETTERS = 'ABCDEFGH';
+const KEY = `groupimg-votes-round-${data.round}`;
+const $ = id => document.getElementById(id);
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === false || v == null) continue;
+    node.setAttribute(k, v === true ? '' : v);
+  }
+  node.append(...children);
+  return node;
+}
+
+function img(id, size, lazy) {
+  const [w, h] = data.sizes[id];
+  return el('img', {src: `../thumbs/${id}.jpg`, width: w, height: h, alt: '', class: `cell ${size}`,
+                    loading: lazy ? 'lazy' : false, decoding: 'async'});
+}
+
+// votes: neighbors[query index] = config index or 'tie';
+// split = config index whose groups look best overall, or 'same'
+let votes = {round: data.round, neighbors: {}, split: null, revealed: false};
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY));
+  if (saved) votes = saved;
+} catch {}
+
+let sendTimer;
+function save() {
+  votes.updated = new Date().toISOString();
+  try { localStorage.setItem(KEY, JSON.stringify(votes)); } catch {}
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`/save/${data.round}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(votes)});
+      if (!r.ok) throw new Error(r.status);
+      $('status').textContent = `Saved to results/round${data.round}.json`;
+      $('download').hidden = true;
+    } catch {
+      $('status').textContent = 'Not saved to disk (open the page through serve.py)';
+      $('download').hidden = false;
+    }
+  }, 300);
+}
+
+$('download').addEventListener('click', () => {
+  const a = el('a', {download: `round${data.round}.json`,
+    href: URL.createObjectURL(new Blob([JSON.stringify(votes, null, 1)], {type: 'application/json'}))});
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ---- neighbors ---- */
+let at = data.queries.findIndex((_, i) => !(i in votes.neighbors));
+if (at < 0) at = 0;
+$('maxkey').textContent = data.configs.length;
+if (data.pick === 'disagree')
+  $('pick-note').textContent = ' The images were picked where the options disagree most, so every question shows a real difference.';
+
+function renderQuery() {
+  const q = data.queries[at];
+  const answered = Object.keys(votes.neighbors).length;
+  $('qcount').textContent = `Image ${at + 1} of ${data.queries.length} · ${answered} answered`;
+  $('prev').disabled = at === 0;
+  $('next').disabled = at === data.queries.length - 1;
+  const vote = votes.neighbors[at];
+  // images every row picked go first, in the same place in each row, so
+  // only the images that differ need comparing; both parts keep each row's
+  // closest-first order (shared ones by their average place)
+  const sets = q.rows.map(row => new Set(row.images));
+  const place = id => q.rows.reduce((sum, row) => sum + row.images.indexOf(id), 0);
+  const shared = q.rows[0].images.filter(id => sets.every(s => s.has(id))).sort((a, b) => place(a) - place(b));
+  const rows = q.rows.map((row, r) => {
+    const own = row.images.filter(id => !shared.includes(id));
+    return el('button', {type: 'button', class: 'row', 'aria-pressed': String(vote === row.config),
+                         'aria-label': `Row ${r + 1}`, 'data-row': r},
+      el('span', {class: 'key'}, String(r + 1)),
+      ...shared.map(id => img(id, '', false)),
+      ...(shared.length && own.length ? [el('span', {class: 'sep'}, 'different')] : []),
+      ...own.map(id => img(id, '', false)));
+  });
+  const tie = el('button', {type: 'button', class: 'btn tie', 'aria-pressed': String(vote === 'tie'),
+                            'data-row': 'tie'}, 'Tie (T)');
+  $('query').replaceChildren(
+    el('figure', {}, img(q.image, 'big', false), el('figcaption', {}, 'This image')),
+    el('div', {class: 'rows'}, ...rows, tie));
+  // fetch the next image's rows ahead of time
+  const next = data.queries[at + 1];
+  if (next) [next.image, ...next.rows.flatMap(r => r.images)].forEach(id => { new Image().src = `../thumbs/${id}.jpg`; });
+}
+
+// a short pause after a pick shows which row was chosen before moving on
+let advance;
+function go(i) { clearTimeout(advance); at = i; renderQuery(); }
+function pick(r) {
+  votes.neighbors[at] = r === 'tie' ? 'tie' : data.queries[at].rows[r].config;
+  save();
+  go(at);
+  if (at < data.queries.length - 1) advance = setTimeout(() => go(at + 1), 180);
+}
+
+$('query').addEventListener('click', e => {
+  const b = e.target.closest('[data-row]');
+  if (b) pick(b.dataset.row === 'tie' ? 'tie' : Number(b.dataset.row));
+});
+$('prev').addEventListener('click', () => go(at - 1));
+$('next').addEventListener('click', () => go(at + 1));
+document.addEventListener('keydown', e => {
+  if (view() !== 'neighbors' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest('select, input, textarea')) return;
+  const n = Number(e.key);
+  if (n >= 1 && n <= data.configs.length) pick(n - 1);
+  else if (e.key === 't' || e.key === 'T' || e.key === '0') pick('tie');
+  else if (e.key === 'ArrowLeft' && at > 0) go(at - 1);
+  else if (e.key === 'ArrowRight' && at < data.queries.length - 1) go(at + 1);
+  else return;
+  e.preventDefault();
+});
+
+/* ---- groups ---- */
+$('groups-help').textContent = `Each option split the same ${data.n} images into ${data.k} groups, largest first. ` +
+  `A group shows the 12 images closest to its center, then the 4 farthest from it, ` +
+  `which show how far a group strays. Look through them, then answer the one question.`;
+
+const choice = (value, text) => el('label', {},
+  el('input', {type: 'radio', name: 'split', value, checked: String(votes.split) === String(value)}), text);
+$('pick').append(...data.options.map((o, i) => choice(o.config, `Option ${LETTERS[i]}`)),
+                 choice('same', 'No real difference'));
+$('pick').addEventListener('change', e => {
+  votes.split = e.target.value === 'same' ? 'same' : Number(e.target.value);
+  save();
+});
+$('jump').replaceChildren(el('span', {}, 'Jump to:'),
+  ...data.options.map((_, i) => el('a', {href: `#groups/${LETTERS[i]}`}, `Option ${LETTERS[i]}`)));
+
+$('options').replaceChildren(...data.options.map((o, i) => {
+  return el('article', {class: 'option', id: `option-${LETTERS[i]}`, 'aria-labelledby': `option-${LETTERS[i]}-title`},
+    el('h3', {id: `option-${LETTERS[i]}-title`}, `Option ${LETTERS[i]}`),
+    ...o.groups.map(g => el('div', {class: 'group'},
+      el('div', {class: 'count'}, `${g.size} images`),
+      el('div', {class: 'gimgs'}, ...g.near.map(id => img(id, '', true)),
+        ...(g.far.length ? [el('span', {class: 'sep'}, 'farthest'), ...g.far.map(id => img(id, '', true))] : [])))));
+}));
+
+/* ---- results ---- */
+function renderProgress() {
+  const nq = Object.keys(votes.neighbors).length, split = votes.split != null;
+  $('progress').textContent = `Neighbors: ${nq} of ${data.queries.length} answered. ` +
+    `Groups: ${split ? 'answered' : 'not answered yet'}.`;
+  return nq === data.queries.length && split;
+}
+
+function renderReveal() {
+  const pct = v => `${(v * 100).toFixed(1)}%`;
+  const wins = c => Object.values(votes.neighbors).filter(v => v === c).length;
+  const ties = Object.values(votes.neighbors).filter(v => v === 'tie').length;
+  const head = ['Config', 'Descriptor', 'Groups option', 'Neighbor wins', 'Groups pick',
+                'Same class in 8 NN', 'Same kind in 8 NN', 'Group purity', 'ARI vs classes',
+                'Values', 'ms per image', 'k-means s'];
+  const rows = data.configs.map((c, i) => el('tr', {},
+    el('td', {}, c.name), el('td', {class: 'spec'}, c.spec),
+    el('td', {}, LETTERS[data.options.findIndex(o => o.config === i)]),
+    el('td', {}, String(wins(i))), el('td', {}, votes.split === i ? 'better' : votes.split === 'same' ? 'same' : '–'),
+    el('td', {}, pct(c.p8)), el('td', {}, pct(c.p8_coarse)), el('td', {}, pct(c.purity)),
+    el('td', {}, c.ari.toFixed(3)), el('td', {}, String(c.dims)),
+    el('td', {}, c.ms.toFixed(2)), el('td', {}, c.kmeans_s.toFixed(1))));
+  $('revealed').replaceChildren(
+    el('div', {class: 'scroll'}, el('table', {}, el('thead', {}, el('tr', {}, ...head.map(h => el('th', {scope: 'col'}, h)))), el('tbody', {}, ...rows))),
+    el('p', {class: 'note'}, `Ties: ${ties}. "Same class/kind in 8 NN": share of each image's 8 nearest images ` +
+      `with the same class (church, banded...) or kind (photo or texture), over all ${data.n} images. ` +
+      `Group purity: share of images whose class is the most common one in their group. ` +
+      `These scores use the dataset's labels, which name objects, not looks; your votes come first. ` +
+      `"ms per image": descriptor time from a 128 px thumbnail, not counting decoding.`));
+  $('reveal').hidden = true;
+}
+
+$('reveal').addEventListener('click', () => {
+  if (!renderProgress() && !confirm('Not everything is answered yet. Reveal anyway? Votes after this are no longer blind.')) return;
+  votes.revealed = new Date().toISOString();
+  save();
+  renderReveal();
+});
+
+/* ---- views ---- */
+function view() { return (location.hash.slice(1) || 'neighbors').split('/')[0]; }
+function route() {
+  const v = ['neighbors', 'groups', 'results'].includes(view()) ? view() : 'neighbors';
+  for (const name of ['neighbors', 'groups', 'results']) $(`${name}-view`).hidden = name !== v;
+  for (const a of document.querySelectorAll('nav a')) {
+    if (a.getAttribute('href') === `#${v}`) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  }
+  if (v === 'groups') {
+    const letter = location.hash.split('/')[1];
+    $(`option-${letter}`)?.scrollIntoView();
+  }
+  if (v === 'results') renderProgress();
+}
+window.addEventListener('hashchange', route);
+
+renderQuery();
+if (votes.revealed) { renderProgress(); renderReveal(); }
+route();
+</script>
+</body>
+</html>
