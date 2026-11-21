@@ -27,12 +27,6 @@ class K_means:
     self.size = size
     self.resample = resample
 
-  def euclidian_distance(self,x1,x2):
-    s = 0.0
-    for i in range(len(x1)):
-      s += math.sqrt((float(x1[i]) - float(x2[i])) ** 2)
-    return s
-
   def read_image(self,im):
     try:
       img = Image.open(im)
@@ -69,19 +63,44 @@ class K_means:
     self.end = [r[1] for r in result if r[1] != None]
 
   def distances(self,means):
-    # manhattan distance from every image to every mean, one column per mean
-    return np.stack([np.abs(self.data - m).sum(axis=1) for m in means], axis=1)
+    # squared euclidean distance from every image to every mean, one column
+    # per mean. Written as |x|^2 - 2 x.m + |m|^2 so it is a single matrix
+    # multiplication. The mean of a cluster is the point with the smallest
+    # squared distance to its members, so assigning and updating agree.
+    means = np.asarray(means, dtype=float)
+    finite = np.isfinite(means).all(axis=1)
+    m = np.where(finite[:, None], means, 0)
+    dist = (self.data ** 2).sum(axis=1)[:, None] - 2 * self.data @ m.T + (m ** 2).sum(axis=1)
+    # rounding can push a distance slightly below zero
+    dist = np.maximum(dist, 0)
+    # a mean of an empty cluster is infinitely far from everything
+    dist[:, ~finite] = np.inf
+    return dist
+
+  def tolerance(self,means):
+    # the matrix form above loses precision in proportion to the size of the
+    # vectors, so "too close to call" has to scale with them
+    means = means[np.isfinite(means).all(axis=1)]
+    scale = (self.data ** 2).sum(axis=1) + (means ** 2).sum(axis=1).max()
+    return EPSILON * (1 + scale)
 
   def init_clusters(self):
-    # k-means++ seeding: pick initial centers far apart from each other, so
-    # distinct groups don't start out (and end up) sharing a cluster
+    # greedy k-means++ seeding: pick initial centers far apart from each
+    # other, so distinct groups don't start out (and end up) sharing a
+    # cluster. Each new center is the best of a few far-away candidates;
+    # taking just one candidate often leaves two groups sharing a center
+    trials = 2 + int(math.log(self.k))
     centers = [random.choice(self.data)]
-    closest = self.distances(centers)[:, 0]
+    closest = ((self.data - centers[0]) ** 2).sum(axis=1)
     while len(centers) < self.k :
       if closest.sum() == 0 :
         break
-      centers.append(random.choices(self.data, weights=closest ** 2)[0])
-      closest = np.minimum(closest, np.abs(self.data - centers[-1]).sum(axis=1))
+      # the distance is already squared, as k-means++ wants
+      picks = random.choices(range(len(self.data)), weights=closest, k=trials)
+      options = [np.minimum(closest, ((self.data - self.data[p]) ** 2).sum(axis=1)) for p in picks]
+      best = min(range(trials), key=lambda i: options[i].sum())
+      centers.append(self.data[picks[best]])
+      closest = options[best]
     self.cluster = self.distances(centers).argmin(axis=1)
 
   def fill_empty_clusters(self,m):
@@ -92,7 +111,7 @@ class K_means:
       counts = np.bincount(self.cluster, minlength=self.k)
       if counts[c] > 0 :
         continue
-      dist = np.abs(self.data - m[self.cluster]).sum(axis=1)
+      dist = ((self.data - m[self.cluster]) ** 2).sum(axis=1)
       dist[counts[self.cluster] < 2] = 0
       far = dist.argmax()
       if dist[far] <= EPSILON :
@@ -111,7 +130,7 @@ class K_means:
       self.init_clusters()
       self.run_k_means()
       m = self.generate_k_means()
-      cost = np.abs(self.data - m[self.cluster]).sum()
+      cost = ((self.data - m[self.cluster]) ** 2).sum()
       if best == None or cost < best[0] :
         best = (cost, self.cluster)
     self.cluster = best[1]
@@ -126,7 +145,7 @@ class K_means:
       # only move an image if it is clearly closer to another cluster, so
       # ties can't make it bounce between clusters forever
       current = dist[np.arange(len(dist)), self.cluster]
-      stay = current - dist.min(axis=1) <= EPSILON
+      stay = current - dist.min(axis=1) <= self.tolerance(m)
       cluster[stay] = self.cluster[stay]
       if (cluster == self.cluster).all() :
         break

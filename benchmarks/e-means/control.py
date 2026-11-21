@@ -31,7 +31,7 @@ def lloyd(x, k, rng, iters=300):
 
 
 rng = np.random.default_rng(0)
-for n in [500, 5000, 50000, 200000]:
+for n in SIZES:
     for k in [5, 20]:
         x, truth = histograms(n, k, rng)   # same data stream as bench.py
         r = np.random.default_rng(0)

@@ -89,9 +89,12 @@ def costs(x, lab, k):
     return np.abs(r).sum() / len(x), (r ** 2).sum() / len(x)
 
 
+# kept small so a full run takes a few minutes
+SIZES = [500, 2000, 5000, 10000]
+
 rng = np.random.default_rng(0)
 print(f"{'n':>7} {'k':>3} {'algo':<22} {'time s':>8} {'L1/pt':>8} {'MSE/pt':>8} {'ARI':>6}")
-for n in [500, 5000, 50000, 200000]:
+for n in SIZES:
     for k in [5, 20]:
         x, truth = histograms(n, k, rng)
         random.seed(0); np.random.seed(0)
