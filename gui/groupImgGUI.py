@@ -1,7 +1,6 @@
 import os
 import sys
 import shutil
-import glob
 import math
 import random
 import warnings
@@ -104,6 +103,17 @@ def describe(pixels, size=None):
     aspect = min(max(math.log2(w / h), -2), 2) / 4
     v.append(np.array([area, aspect]) * math.sqrt(SIZE_WEIGHT))
   return np.concatenate([p.ravel() for p in v]).astype(np.float32)
+
+# images are found by extension, in any case (.jpg, .JPEG, .Png...)
+EXTENSIONS = ('.jpg', '.jpeg', '.png')
+
+def list_images(folder):
+  # comparing in lower case also keeps a file from being listed twice where
+  # the file system ignores case, as the patterns *.jpg and *.JPG used to
+  if not os.path.isdir(folder) :
+    return []
+  return [os.path.join(folder, name) for name in sorted(os.listdir(folder))
+          if name.lower().endswith(EXTENSIONS) and os.path.isfile(os.path.join(folder, name))]
 
 class K_means:
 
@@ -325,13 +335,10 @@ class groupImgGUI(QWidget) :
 			
 	def run(self) :
 		self.disableButton()
-		types = ('*.jpg', '*.JPG', '*.png', '*.jpeg')
-		imagePaths = []
 		folder = self.dir
 		if not folder.endswith("/") :
 			folder+="/"
-		for files in types :
-			imagePaths.extend(sorted(glob.glob(folder+files)))
+		imagePaths = list_images(folder)
 		nimages = len(imagePaths)
 		nfolders = int(math.log(self.kmeans.value(), 10))+1		
 		if nimages <= 0 :
