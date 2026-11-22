@@ -124,14 +124,65 @@ total cost was within 0.001% of the old. 17 runs gave the same groups (ARI
 a slightly lower cost. The CLI groups the 2,000 test images in 2.4 s
 from start to end.
 
+## Next: DCT descriptors (written, not run yet)
+
+Three blocks built on the discrete cosine transform (the transform JPEG
+uses) are in `descriptors.py`, to be scored before any of them reaches the
+CLI:
+
+- **`freq`, the frequency spectrum.** The gray thumbnail is cut into 8x8
+  blocks as in JPEG. Each block splits one vote between 14 frequency bands
+  (u + v of its coefficients) by its average coefficient size in each, or
+  gives it to a "flat" bin when its pixels vary less than `FLAT_THRESHOLD`.
+  This says how fine or coarse the detail is, wherever it is, which the
+  current blocks can't tell: edges and texture only look 1 pixel around
+  each pixel of the 128 px thumbnail. It is a histogram like the others
+  (15 bins, `freq@bands3` per third). Expected to help the textures most.
+- **`dct`, the layout.** The 63 lowest frequencies of the gray image
+  squashed to 32x32, without the average, scaled to length 1: where light
+  and dark are, regardless of brightness and contrast. The DCT keeps
+  distances unchanged, so this is close to comparing tiny blurred
+  thumbnails. Expected to be thrown off by framing (a church on the left vs
+  the right) and to do poorly on class scores, but to match resized and
+  re-saved copies of the same photo.
+- **`phash`.** The same coefficients reduced to above or below their median,
+  as the pHash perceptual hash does.
+
+`scores.py` prints the label scores of the tables above for any configs,
+without a judging page. `duplicates.py` asks a different question: in a
+folder of recovered files, copies of the same photo should land together.
+It copies 200 images in 5 ways (half size at JPEG quality 50, a 160 px
+thumbnail, 10% cropped off each side, brighter with less contrast,
+mirrored), then checks whether each copy's nearest original is its own and
+whether k-means puts it in its original's group.
+
+To run, after `make_mix.py` and `cache.py` as below:
+
+```
+F=benchmarks/features
+BASE="rgb+rgb@bands3+edges@bands3+lbp@bands3"
+python -I $F/scores.py "shipped=$BASE" \
+    "+freq=$BASE+freq@bands3" "freq for lbp=rgb+rgb@bands3+edges@bands3+freq@bands3" \
+    "+dct=$BASE+dct" "+phash=$BASE+phash" \
+    "freq alone=freq@bands3" "dct alone=dct" "phash alone=phash"
+python -I $F/duplicates.py $F/data/mix "shipped=$BASE" \
+    "+freq=$BASE+freq@bands3" "+dct=$BASE+dct" "+phash=$BASE+phash" "dct alone=dct"
+```
+
+Adding a block at equal weight takes 1/5 of the distance from the others,
+so a config that wins should be retried at other weights (`...+dct*0.5`)
+before a blind round with `judge.py`. The thresholds were set by hand.
+
 ## Files
 
-- `descriptors.py`: every block tried, as configs such as
+- `descriptors.py`: every block tried (and the DCT ones still to try), as configs such as
   `rgb+rgb@bands3+edges@bands3+lbp@bands3` (see its docstring).
   `describe()` in the CLI gives exactly what this config gives.
 - `make_mix.py`: builds the test set from the two downloads.
 - `cache.py`: decodes a folder once into 128 px thumbnails and 256 px copies
   for the pages.
+- `scores.py`: label scores only, for shortlisting configs.
+- `duplicates.py`: the near-duplicate test.
 - `judge.py`: builds a blind round. `--pick disagree` asks only where the
   options differ.
 - `page.html`, `serve.py`: the judging page and a server on 127.0.0.1 that

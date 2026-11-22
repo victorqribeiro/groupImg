@@ -8,8 +8,20 @@ image, or one per region of it:
   edges   gradient orientation: 8 unsigned directions plus 1 "flat" bin
   lbp     rotation-invariant uniform local binary patterns (10 bins)
   size    log area and log aspect ratio of the original image (2 values)
+  freq    DCT frequency spectrum: the gray image is cut into 8x8 blocks, as
+          in JPEG, and each block splits one vote between 14 frequency bands
+          (u + v = 1..14 of its DCT coefficients) by its average coefficient
+          size in each, or gives it to a 15th "flat" bin. Says how fine or coarse
+          the detail is, wherever it is (15 bins)
+  dct     layout: the 63 lowest-frequency DCT coefficients (top-left 8x8 but
+          the average) of the gray image squashed to 32x32, scaled to length
+          1. The arrangement of light and dark, ignoring brightness and
+          contrast; close to a tiny blurred thumbnail (63 values)
+  phash   the same coefficients reduced to above / below their median, as
+          the perceptual hash pHash does, as +-1/sqrt(63) (63 values)
 
 "@q2x2" computes a block per quadrant, "@bands3" per horizontal third.
+dct and phash describe the whole image and take no region.
 
 A config joins blocks with "+", each with an optional weight:
 "rgb*0.4+rgb@bands3*0.35+edges@bands3*0.25". Weights default to 1 and are
@@ -20,6 +32,9 @@ root. Each histogram then has length 1, and the squared Euclidean distance
 between two of them is twice their squared Hellinger distance (0 to 2). A
 block's weight is its share of the distance, split evenly between its
 regions. The size block is already on a 0-1 scale and is used as is.
+dct and phash are already vectors of length 1 (squared distance 0 to 4)
+and are only weighted. Neither the size block nor these two can be
+square-rooted, as dct has negative values.
 
 The prefix "raw:" skips the square root and keeps histograms in percent,
 exactly as groupImg does now.
@@ -29,7 +44,10 @@ import re
 import numpy as np
 from PIL import Image, ImageOps, ExifTags
 
-BINS = {'rgb': 64, 'hsv': 52, 'edges': 9, 'lbp': 10, 'size': 2}
+BINS = {'rgb': 64, 'hsv': 52, 'edges': 9, 'lbp': 10, 'size': 2,
+        'freq': 15, 'dct': 63, 'phash': 63}
+# blocks that are vectors already, not histograms to normalize
+VECTORS = ('size', 'dct', 'phash')
 REGIONS = {None: 1, 'q2x2': 4, 'bands3': 3}
 # a gradient below this (in 0-255 levels across 2 pixels) counts as flat
 EDGE_THRESHOLD = 20.0
@@ -39,8 +57,37 @@ LBP_THRESHOLD = 3.0
 # neighbors of a 3x3 window in circular order, as offsets from its corner
 LBP_RING = [(0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (1, 0)]
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
+# an 8x8 block whose pixels vary less than this (standard deviation, in
+# 0-255 levels) counts as flat, so JPEG noise isn't taken for fine detail
+FLAT_THRESHOLD = 3.0
+# the gray image is squashed to this size for the dct and phash layouts
+DCT_SIZE = 32
+# and they keep this many lowest frequencies in each direction
+DCT_KEEP = 8
 
-BLOCK = re.compile(r'(rgb|hsv|edges|lbp|size)(?:@(q2x2|bands3))?(?:\*([0-9.]+))?')
+
+def dct_matrix(n):
+    """Orthonormal DCT-II: dct_matrix(n) @ x transforms the columns of x,
+    and C @ img @ C.T a whole image."""
+    k, i = np.arange(n)[:, None], np.arange(n)[None, :]
+    c = np.cos(np.pi * (2 * i + 1) * k / (2 * n)) * math.sqrt(2 / n)
+    c[0] /= math.sqrt(2)
+    return c.astype(np.float32)
+
+
+DCT8 = dct_matrix(8)
+DCT_BIG = dct_matrix(DCT_SIZE)
+# frequency band (u + v - 1, 0-13) of each of the 64 coefficients of an 8x8
+# block, as a 64 x 14 matrix that averages a block's coefficients per band.
+# Averages, not sums, as the middle bands have up to 8 coefficients and the
+# ends 1: noise then spreads evenly. The block average (u = v = 0) belongs to
+# no band
+_uv = np.add.outer(np.arange(8), np.arange(8)).ravel()
+FREQ_BANDS = np.zeros((64, 14), np.float32)
+FREQ_BANDS[np.arange(1, 64), _uv[1:] - 1] = 1
+FREQ_BANDS /= FREQ_BANDS.sum(axis=0)
+
+BLOCK = re.compile(r'(rgb|hsv|edges|lbp|size|freq|dct|phash)(?:@(q2x2|bands3))?(?:\*([0-9.]+))?')
 
 
 def load_thumbnail(path, size=128):
@@ -70,6 +117,8 @@ def parse(spec):
         m = BLOCK.fullmatch(part)
         if not m:
             raise ValueError(f"bad block {part!r} in {spec!r}")
+        if m[1] in ('dct', 'phash') and m[2]:
+            raise ValueError(f"{m[1]} describes the whole image, not @{m[2]}, in {spec!r}")
         blocks.append((m[1], m[2], float(m[3]) if m[3] else 1.0))
     total = sum(w for _, _, w in blocks)
     return raw, [(n, l, w / total) for n, l, w in blocks]
@@ -156,6 +205,74 @@ def lbp_hist(g, layout):
     return count(codes, region_map(h - 2, w - 2, layout), n, 10)
 
 
+def freq_votes(g):
+    """Votes of the 8x8 blocks of a gray image for the freq histogram:
+    shape (rows, cols, 15), each block's votes summing to 1. Pixels past
+    the last whole block are left out."""
+    rows, cols = g.shape[0] // 8, g.shape[1] // 8
+    blocks = g[:rows * 8, :cols * 8].reshape(rows, 8, cols, 8).swapaxes(1, 2)
+    coef = np.einsum('ui,rcij,vj->rcuv', DCT8, blocks, DCT8).reshape(rows, cols, 64)
+    # the DCT is orthonormal, so the coefficients but the average hold the
+    # block's variance times 64
+    flat = (coef[..., 1:] ** 2).sum(axis=2) < 64 * FLAT_THRESHOLD ** 2
+    # magnitudes, not squares, so the strongest band doesn't take everything
+    detail = np.abs(coef) @ FREQ_BANDS
+    total = detail.sum(axis=2, keepdims=True)
+    votes = np.zeros((rows, cols, 15), np.float32)
+    votes[..., :14] = np.where(flat[..., None], 0, detail / np.maximum(total, 1e-12))
+    votes[..., 14] = flat
+    return votes
+
+
+def freq_hist(votes, layout):
+    n = REGIONS[layout]
+    rows, cols = votes.shape[:2]
+    if rows == 0 or cols == 0:
+        # smaller than one block: no detail to measure
+        hist = np.zeros((n, 15))
+        hist[:, 14] = 1
+        return hist
+    r = region_map(rows, cols, layout).ravel()
+    hist = np.zeros((n, 15))
+    np.add.at(hist, r, votes.reshape(-1, 15))
+    empty = hist.sum(axis=1) == 0
+    if empty.any():
+        hist[empty] = hist.sum(axis=0)
+    return hist
+
+
+def layout_coefficients(g):
+    """The 63 lowest-frequency DCT coefficients of a gray image squashed to
+    DCT_SIZE x DCT_SIZE, without the average."""
+    small = np.asarray(Image.fromarray(np.ascontiguousarray(g, np.float32))
+                       .resize((DCT_SIZE, DCT_SIZE), Image.BOX))
+    coef = DCT_BIG @ small @ DCT_BIG.T
+    return coef[:DCT_KEEP, :DCT_KEEP].ravel()[1:]
+
+
+def layout_is_flat(coef):
+    # the coefficients hold the variance of the broad shapes times
+    # DCT_SIZE^2; below FLAT_THRESHOLD the image has no arrangement to speak
+    # of, only noise that would be blown up to length 1
+    return (coef.astype(np.float64) ** 2).sum() < (DCT_SIZE * FLAT_THRESHOLD) ** 2
+
+
+def dct_values(coef):
+    # length 1, so contrast doesn't count, only the arrangement. A flat
+    # image stays 0, as far from everything (1) as unrelated images are on
+    # average
+    if layout_is_flat(coef):
+        return np.zeros((1, len(coef)))
+    return (coef / np.sqrt((coef.astype(np.float64) ** 2).sum()))[None]
+
+
+def phash_values(coef):
+    if layout_is_flat(coef):
+        return np.zeros((1, len(coef)))
+    bits = coef > np.median(coef)
+    return (np.where(bits, 1.0, -1.0) / math.sqrt(len(coef)))[None]
+
+
 def size_values(osize):
     w, h = max(osize[0], 1), max(osize[1], 1)
     # 16x16 -> 0, 64 megapixels -> 1
@@ -180,8 +297,19 @@ def extract(img, osize, keys):
         else:
             if 'gray' not in cache:
                 cache['gray'] = img @ LUMA
-            fn = edge_hist if name == 'edges' else lbp_hist
-            out[name, layout] = fn(cache['gray'], layout)
+            g = cache['gray']
+            if name == 'freq':
+                if 'freq' not in cache:
+                    cache['freq'] = freq_votes(g)
+                out[name, layout] = freq_hist(cache['freq'], layout)
+            elif name in ('dct', 'phash'):
+                if 'layout' not in cache:
+                    cache['layout'] = layout_coefficients(g)
+                fn = dct_values if name == 'dct' else phash_values
+                out[name, layout] = fn(cache['layout'])
+            else:
+                fn = edge_hist if name == 'edges' else lbp_hist
+                out[name, layout] = fn(g, layout)
     return out
 
 
@@ -212,7 +340,7 @@ def combine(counts, spec):
     for name, layout, weight in blocks:
         c = counts[name, layout].astype(np.float64)
         n, regions = c.shape[:2]
-        if name == 'size':
+        if name in VECTORS:
             parts.append(c.reshape(n, -1) * math.sqrt(weight))
             continue
         p = c / c.sum(axis=2, keepdims=True)
