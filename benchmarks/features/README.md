@@ -295,12 +295,48 @@ python -I $F/duplicates.py $F/data/mix "before=$BASE" "+dctm*0.5=$BASE+dctm*0.5"
     "+dctm=$BASE+dctm" "+dctc*0.5=$BASE+dctc*0.5" "+dctc=$BASE+dctc"
 ```
 
+## Fine or coarse detail (`freq`), two versions to judge by eye
+
+`freq` was the only DCT block that scored a little higher everywhere, by
+too little to ship without a look. On top of the mirror-proof layout the
+label scores can't tell its versions apart, so each is in groupImg on its
+own branch, to be judged by eye against master:
+
+- **`freq-added`**: next to the other parts, all at equal weight (2/11
+  each, the layout 1/11).
+- **`freq-for-texture`**: in place of texture, which also looks at fine
+  detail but only one pixel around each pixel (2/9 each, the layout 1/9).
+
+| option | same class | same kind | purity k=12 / 25 / 50, mean of 4 seeds | copies: nearest is own | brighter copies in their original's group, k=50 | descriptor, ms/image | CLI, 2,000 images |
+|---|---|---|---|---|---|---|---|
+| master | 27.5% | 83.4% | 22.3 / 25.9 / 30.1% | 97% | 70% | 0.80 | 2.47 s |
+| `freq-added` | 27.4% | 83.8% | 22.2 / 25.7 / 30.1% | 98% | 78% | 1.88 | 2.85 s |
+| `freq-for-texture` | 27.0% | 83.6% | 22.6 / 25.7 / 30.0% | 98% | 76% | 1.65 | 2.37 s |
+
+All within the point or so that seeds change; `freq` at half weight scored
+the same. The descriptor times are the benchmark's; the CLI times are
+medians of 6 runs with k = 12. In the CLI, `freq` takes 0.08 ms per
+thumbnail and texture 0.15 ms (edges 0.29, the layout 0.03), so
+`freq-for-texture` is the fastest. The benchmark computes `freq` with
+`einsum`, which is slower than the CLI's matrix products.
+
+**This branch is `freq-added`**: `describe()` gives `rgb+rgb@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` to within 2e-7.
+
+```
+python -I $F/scores.py --seed 1 "master=$BASE+dctm*0.5" \
+    "freq added=$BASE+freq@bands3+dctm*0.5" \
+    "freq for texture=rgb+rgb@bands3+edges@bands3+freq@bands3+dctm*0.5"
+python -I $F/duplicates.py $F/data/mix "master=$BASE+dctm*0.5" \
+    "freq added=$BASE+freq@bands3+dctm*0.5" \
+    "freq for texture=rgb+rgb@bands3+edges@bands3+freq@bands3+dctm*0.5"
+```
+
 ## Files
 
 - `descriptors.py`: every block tried, as configs such as
   `rgb+rgb@bands3+edges@bands3+lbp@bands3` (see its docstring).
   `describe()` in the CLI gives exactly what
-  `rgb+rgb@bands3+edges@bands3+lbp@bands3+dctm*0.5` gives.
+  `rgb+rgb@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` gives.
 - `make_mix.py`: builds the test set from the two downloads.
 - `cache.py`: decodes a folder once into 128 px thumbnails and 256 px copies
   for the pages.

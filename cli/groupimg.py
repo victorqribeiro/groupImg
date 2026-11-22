@@ -20,10 +20,10 @@ MAX_ITERATIONS = 1000
 
 # How much each part of an image's description counts in the distance
 # between two images: color over the whole image, color in each horizontal
-# third (sky above, ground below), edges and texture in each third, and the
-# layout of light and dark. They add up to 1. benchmarks/features/ has how
-# they were chosen.
-WEIGHTS = (2/9, 2/9, 2/9, 2/9, 1/9)
+# third (sky above, ground below), edges, texture and how fine or coarse
+# the detail is in each third, and the layout of light and dark. They add up
+# to 1. benchmarks/features/ has how they were chosen.
+WEIGHTS = (2/11, 2/11, 2/11, 2/11, 2/11, 1/11)
 # with -s, how much the image's size counts next to them
 SIZE_WEIGHT = 1.0
 # a change in brightness smaller than this across 2 pixels is not an edge
@@ -41,6 +41,9 @@ LAYOUT_KEEP = 8
 # a layout whose broad shapes vary less than this (in 0-255 levels) is a
 # blank image. Real images vary more than 0.3
 LAYOUT_FLAT = 0.01
+# an 8x8 block whose pixels vary less than this (in 0-255 levels) has no
+# detail, so JPEG noise isn't taken for fine detail
+DETAIL_FLAT = 3
 
 def dct_matrix(n):
   # the discrete cosine transform JPEG uses, as a matrix: the frequencies
@@ -54,6 +57,15 @@ DCT = dct_matrix(LAYOUT_SIZE)
 # the frequencies kept that are odd from left to right: mirroring an image
 # only flips their sign
 ODD = (np.arange(1, LAYOUT_KEEP ** 2) % LAYOUT_KEEP) % 2 == 1
+DCT8 = dct_matrix(8)
+# which of 14 bands, from coarse to fine, each of the 64 frequencies of an
+# 8x8 block belongs to (u + v - 1), as a matrix that averages a block's
+# frequencies in each band. Averages, as the middle bands have up to 8
+# frequencies and the ends 1. The block's average belongs to none
+_uv = np.add.outer(np.arange(8), np.arange(8)).ravel()
+BANDS = np.zeros((64, 14), np.float32)
+BANDS[np.arange(1, 64), _uv[1:] - 1] = 1
+BANDS /= BANDS.sum(axis=0)
 
 def per_band(codes, nbins, weights=None):
   # one histogram of the codes in each horizontal third of the image
@@ -93,6 +105,28 @@ def texture(gray):
   turns = (bits != np.roll(bits, 1, axis=0)).sum(axis=0)
   return per_band(np.where(turns <= 2, bits.sum(axis=0), 9), 10)
 
+def detail(gray):
+  # how fine or coarse the detail is, which edges and texture can't tell as
+  # they only look one pixel around each pixel. The image is cut into 8x8
+  # blocks, as in JPEG, and each block splits one vote between 14 frequency
+  # bands, coarse to fine, by how strong its frequencies are in each, or
+  # gives it to a 15th bin when it is flat. One histogram per third
+  rows, cols = gray.shape[0] // 8, gray.shape[1] // 8
+  if rows == 0 or cols == 0 :
+    # smaller than one block: no detail to measure
+    return np.tile(np.eye(15)[14], (3, 1))
+  blocks = gray[:rows * 8, :cols * 8].reshape(rows, 8, cols, 8).swapaxes(1, 2)
+  coef = (DCT8 @ blocks @ DCT8.T).reshape(rows, cols, 64)
+  # the frequencies but the average hold the block's variance times 64
+  flat = (coef[..., 1:] ** 2).sum(axis=2) < 64 * DETAIL_FLAT ** 2
+  # sizes, not squares, so the strongest band doesn't take everything
+  strength = np.abs(coef) @ BANDS
+  votes = np.zeros((rows, cols, 15), np.float32)
+  votes[..., :14] = np.where(flat[..., None], 0, strength / np.maximum(strength.sum(axis=2, keepdims=True), 1e-12))
+  votes[..., 14] = flat
+  band = 3 * np.arange(rows) // rows
+  return np.stack([votes[band == b].reshape(-1, 15).sum(axis=0) for b in range(3)]).astype(np.float64)
+
 def layout(gray):
   # where light and dark are in the image, whatever its brightness and
   # contrast and whichever way it faces: the lowest frequencies of the image
@@ -110,8 +144,8 @@ def layout(gray):
 
 def describe(pixels, size=None):
   # feature vector of an image, from a height x width x 3 array of RGB
-  # values: histograms of color (4 levels per channel, 64 bins), edges and
-  # texture, each divided by its pixel count and square-rooted. The squared
+  # values: histograms of color (4 levels per channel, 64 bins), edges,
+  # texture and detail, each divided by its count and square-rooted. The squared
   # distance between two images is then twice their Hellinger distance,
   # which unlike plain histograms doesn't let one big background color
   # outweigh everything else. Then the layout of light and dark. With -s,
@@ -125,13 +159,14 @@ def describe(pixels, size=None):
     parts += [np.tile(np.eye(9)[8], (3, 1)), np.tile(np.eye(10)[0], (3, 1))]
   else :
     parts += [edges(gray), texture(gray)]
+  parts.append(detail(gray))
   v = []
   for hist, weight in zip(parts, WEIGHTS):
     # a third too small to have pixels (tiny images) gets the whole image's
     empty = hist.sum(axis=1) == 0
     hist[empty] = hist.sum(axis=0)
     v.append(np.sqrt(hist / hist.sum(axis=1, keepdims=True)) * math.sqrt(weight / len(hist)))
-  v.append(layout(gray) * math.sqrt(WEIGHTS[4]))
+  v.append(layout(gray) * math.sqrt(WEIGHTS[-1]))
   if size :
     w, h = max(size[0], 1), max(size[1], 1)
     area = min(max((math.log2(w * h) - 8) / 18, 0), 1)  # 16x16 -> 0, 64 MP -> 1
