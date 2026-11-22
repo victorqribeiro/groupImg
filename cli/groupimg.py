@@ -20,9 +20,10 @@ MAX_ITERATIONS = 1000
 
 # How much each part of an image's description counts in the distance
 # between two images: color over the whole image, color in each horizontal
-# third (sky above, ground below), edges and texture in each third. They add
-# up to 1. benchmarks/features/ has how they were chosen.
-WEIGHTS = (0.25, 0.25, 0.25, 0.25)
+# third (sky above, ground below), edges and texture in each third, and the
+# layout of light and dark. They add up to 1. benchmarks/features/ has how
+# they were chosen.
+WEIGHTS = (2/9, 2/9, 2/9, 2/9, 1/9)
 # with -s, how much the image's size counts next to them
 SIZE_WEIGHT = 1.0
 # a change in brightness smaller than this across 2 pixels is not an edge
@@ -33,6 +34,26 @@ TEXTURE_THRESHOLD = 3
 # the 8 neighbors of a pixel in circular order, as offsets in a 3x3 window
 RING = [(0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (1, 0)]
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
+# for its layout the image is squashed to this size, and this many of the
+# lowest frequencies in each direction are kept
+LAYOUT_SIZE = 32
+LAYOUT_KEEP = 8
+# a layout whose broad shapes vary less than this (in 0-255 levels) is a
+# blank image. Real images vary more than 0.3
+LAYOUT_FLAT = 0.01
+
+def dct_matrix(n):
+  # the discrete cosine transform JPEG uses, as a matrix: the frequencies
+  # of an image are dct_matrix(n) @ image @ dct_matrix(n).T
+  k, i = np.arange(n)[:, None], np.arange(n)[None, :]
+  c = np.cos(np.pi * (2 * i + 1) * k / (2 * n)) * math.sqrt(2 / n)
+  c[0] /= math.sqrt(2)
+  return c.astype(np.float32)
+
+DCT = dct_matrix(LAYOUT_SIZE)
+# the frequencies kept that are odd from left to right: mirroring an image
+# only flips their sign
+ODD = (np.arange(1, LAYOUT_KEEP ** 2) % LAYOUT_KEEP) % 2 == 1
 
 def per_band(codes, nbins, weights=None):
   # one histogram of the codes in each horizontal third of the image
@@ -72,14 +93,29 @@ def texture(gray):
   turns = (bits != np.roll(bits, 1, axis=0)).sum(axis=0)
   return per_band(np.where(turns <= 2, bits.sum(axis=0), 9), 10)
 
+def layout(gray):
+  # where light and dark are in the image, whatever its brightness and
+  # contrast and whichever way it faces: the lowest frequencies of the image
+  # squashed to 32x32, without its average, those that mirroring flips as
+  # absolute values, scaled to length 1. This finds brighter and mirrored
+  # copies of the same photo, which the histograms miss
+  small = np.asarray(Image.fromarray(np.ascontiguousarray(gray)).resize((LAYOUT_SIZE, LAYOUT_SIZE), Image.BOX))
+  coef = (DCT @ small @ DCT.T)[:LAYOUT_KEEP, :LAYOUT_KEEP].ravel()[1:].astype(np.float64)
+  coef[ODD] = np.abs(coef[ODD])
+  length = np.sqrt((coef ** 2).sum())
+  if length < LAYOUT_SIZE * LAYOUT_FLAT :
+    # a blank image has no layout
+    return np.zeros_like(coef)
+  return coef / length
+
 def describe(pixels, size=None):
   # feature vector of an image, from a height x width x 3 array of RGB
   # values: histograms of color (4 levels per channel, 64 bins), edges and
   # texture, each divided by its pixel count and square-rooted. The squared
   # distance between two images is then twice their Hellinger distance,
   # which unlike plain histograms doesn't let one big background color
-  # outweigh everything else. With -s, size is the log of the area and of
-  # the aspect ratio of the original image
+  # outweigh everything else. Then the layout of light and dark. With -s,
+  # size is the log of the area and of the aspect ratio of the original image
   q = pixels >> 6
   color = per_band((q[..., 0].astype(np.intp) << 4) | (q[..., 1] << 2) | q[..., 2], 64)
   parts = [color.sum(axis=0, keepdims=True), color]
@@ -95,6 +131,7 @@ def describe(pixels, size=None):
     empty = hist.sum(axis=1) == 0
     hist[empty] = hist.sum(axis=0)
     v.append(np.sqrt(hist / hist.sum(axis=1, keepdims=True)) * math.sqrt(weight / len(hist)))
+  v.append(layout(gray) * math.sqrt(WEIGHTS[4]))
   if size :
     w, h = max(size[0], 1), max(size[1], 1)
     area = min(max((math.log2(w * h) - 8) / 18, 0), 1)  # 16x16 -> 0, 64 MP -> 1
