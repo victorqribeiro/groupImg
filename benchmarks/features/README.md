@@ -13,6 +13,10 @@ with the old histogram). The 12-group splits looked the same either way.
 Reading an image costs what it did before, memory per image goes down, and
 k-means got 3-5 times faster on the longer vectors.
 
+Later a layout of light and dark that ignores mirroring was added, at 1/9
+of the distance, so that brighter and mirrored copies of a photo land
+together: see [Mirror-proof layout](#mirror-proof-layout-in-groupimg-not-judged-by-eye-yet).
+
 ## What changed in groupImg
 
 In `cli/groupimg.py` and `gui/groupImgGUI.py`:
@@ -211,13 +215,7 @@ neighbor, and the label scores fell below chance (2.7% same class). Now only
 a constant image counts as flat (`LAYOUT_FLAT`). With `phash` alone the
 most-cited image now has 25 citations and 5 images are nobody's neighbor.
 
-### Next
-
-- A mirror-proof `dct`: the absolute value of the coefficients with an odd
-  horizontal frequency, which mirroring only flips in sign.
-- A blind round with `freq` (`judge.py`).
-- Making the shipped blocks hold up to brightness and contrast changes, if
-  a brighter copy should still count as the same image.
+A mirror-proof `dct` came next; see below.
 
 To run, after `make_mix.py` and `cache.py` as below (about 20 s each):
 
@@ -234,11 +232,75 @@ python -I $F/duplicates.py $F/data/mix "shipped=$BASE" "+freq=$BASE+freq@bands3"
 
 The thresholds were set by hand.
 
+## Mirror-proof layout (in groupImg, not judged by eye yet)
+
+`dct` found brighter copies but lost mirrored ones: mirroring an image left
+to right flips the sign of the 32 of its 63 coefficients that have an odd
+horizontal frequency. Two blocks undo that:
+
+- **`dctm`** takes those 32 as absolute values. A mirrored copy gets the
+  same vector, give or take rounding in the 32x32 squash: at most 0.18 of
+  the 0-4 range, in images with almost no layout. The block forgets how
+  the signs of those 32 relate to each other, so some arrangements that
+  are not mirror images of each other look the same too.
+- **`dctc`** flips the images whose left half is darker than their right
+  (by the broadest left-right coefficient), so all of them face the same
+  way. It keeps every sign, but an image about as bright on the left as on
+  the right can fall either way: 2 of the 2,000 test thumbnails ended up
+  more than 0.1 from their own mirror image, one 1.24.
+
+| option | same class | same kind | purity k=12, 4 seeds | nearest is own: cropped / brighter / mirrored / all | same group k=50: brighter / mirrored / all |
+|---|---|---|---|---|---|
+| before | 27.6% | 81.3% | 20.6% | 100 / **67** / 100 / 93% | **57** / 100 / 90% |
+| + dct at half weight | 26.5% | 82.4% | | 100 / 92 / **82** / 95% | 81 / **90** / 92% |
+| **+ dctm at half weight (shipped)** | **27.5%** | **83.4%** | **22.3%** | 100 / 88 / 100 / 97% | 70 / 100 / 92% |
+| + dctm | 25.8% | 82.6% | 22.1% | 98 / 95 / 100 / 98% | 81 / 100 / 94% |
+| + dctc at half weight | 26.9% | 82.9% | 21.9% | 98 / 92 / 100 / 98% | 73 / 100 / 93% |
+| + dctc | 24.8% | 81.8% | | 95 / 95 / 100 / 98% | 84 / 100 / 94% |
+
+`dctm` at half weight (1/9 of the distance) is the only option that loses
+nothing on the label scores while finding every mirrored copy and more of
+the brighter ones (88% against 67%). Its group purity at k = 12 was higher
+with each of 4 seeds; at k = 25 and 50 the differences stay within the
+point or so that seeds change. At full weight it finds more brighter copies
+(95%) but loses 1.8 points of same class. `dctc` does no better and has the
+edge case above. Adding `freq` on top changes little (27.4% same class,
+98% of copies found).
+
+### What changed in groupImg
+
+- **`layout()`** in `cli/groupimg.py` and `gui/groupImgGUI.py` computes
+  `dctm`, and `WEIGHTS` gives it 1/9 of the distance and the four other
+  parts 2/9 each. `describe()` gives the config
+  `rgb+rgb@bands3+edges@bands3+lbp@bands3+dctm*0.5` to within 2e-8.
+- 376 values per image instead of 313 (1.5 KB instead of 1.25 KB).
+- The descriptor takes 0.80 ms per thumbnail instead of 0.71. The CLI
+  groups the 2,000 test images (k = 12) in 2.55 s instead of 2.21 s, the
+  median of 6 runs each.
+
+### Next
+
+- Judge it by eye: run `groupImg.py` before and after, or a blind round
+  (`judge.py ... "before=$BASE" "after=$BASE+dctm*0.5"`).
+- A blind round with `freq`.
+- Making the histograms hold up to brightness and contrast changes, if a
+  brighter copy should still count as the same image.
+
+To run, as above:
+
+```
+python -I $F/scores.py "before=$BASE" "+dctm*0.5=$BASE+dctm*0.5" "+dctm=$BASE+dctm" \
+    "+dctc*0.5=$BASE+dctc*0.5" "+dctc=$BASE+dctc"
+python -I $F/duplicates.py $F/data/mix "before=$BASE" "+dctm*0.5=$BASE+dctm*0.5" \
+    "+dctm=$BASE+dctm" "+dctc*0.5=$BASE+dctc*0.5" "+dctc=$BASE+dctc"
+```
+
 ## Files
 
 - `descriptors.py`: every block tried, as configs such as
   `rgb+rgb@bands3+edges@bands3+lbp@bands3` (see its docstring).
-  `describe()` in the CLI gives exactly what this config gives.
+  `describe()` in the CLI gives exactly what
+  `rgb+rgb@bands3+edges@bands3+lbp@bands3+dctm*0.5` gives.
 - `make_mix.py`: builds the test set from the two downloads.
 - `cache.py`: decodes a folder once into 128 px thumbnails and 256 px copies
   for the pages.

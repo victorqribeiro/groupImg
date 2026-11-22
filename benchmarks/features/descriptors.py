@@ -17,11 +17,17 @@ image, or one per region of it:
           the average) of the gray image squashed to 32x32, scaled to length
           1. The arrangement of light and dark, ignoring brightness and
           contrast; close to a tiny blurred thumbnail (63 values)
+  dctm    dct that ignores mirroring: flipping an image left to right
+          only changes the sign of the coefficients with an odd horizontal
+          frequency, so they are taken as absolute values (63 values)
+  dctc    dct that ignores mirroring another way: images whose left half is
+          darker than their right half (by the broadest left-right
+          coefficient) are flipped, so all face the same way (63 values)
   phash   the same coefficients reduced to above / below their median, as
           the perceptual hash pHash does, as +-1/sqrt(63) (63 values)
 
 "@q2x2" computes a block per quadrant, "@bands3" per horizontal third.
-dct and phash describe the whole image and take no region.
+dct, dctm, dctc and phash describe the whole image and take no region.
 
 A config joins blocks with "+", each with an optional weight:
 "rgb*0.4+rgb@bands3*0.35+edges@bands3*0.25". Weights default to 1 and are
@@ -32,8 +38,8 @@ root. Each histogram then has length 1, and the squared Euclidean distance
 between two of them is twice their squared Hellinger distance (0 to 2). A
 block's weight is its share of the distance, split evenly between its
 regions. The size block is already on a 0-1 scale and is used as is.
-dct and phash are already vectors of length 1 (squared distance 0 to 4)
-and are only weighted. Neither the size block nor these two can be
+The dct blocks and phash are already vectors of length 1 (squared distance
+0 to 4) and are only weighted. Neither the size block nor these can be
 square-rooted, as dct has negative values.
 
 The prefix "raw:" skips the square root and keeps histograms in percent,
@@ -45,9 +51,11 @@ import numpy as np
 from PIL import Image, ImageOps, ExifTags
 
 BINS = {'rgb': 64, 'hsv': 52, 'edges': 9, 'lbp': 10, 'size': 2,
-        'freq': 15, 'dct': 63, 'phash': 63}
+        'freq': 15, 'dct': 63, 'dctm': 63, 'dctc': 63, 'phash': 63}
+# blocks made from the layout coefficients, which describe the whole image
+LAYOUT_BLOCKS = ('dct', 'dctm', 'dctc', 'phash')
 # blocks that are vectors already, not histograms to normalize
-VECTORS = ('size', 'dct', 'phash')
+VECTORS = ('size',) + LAYOUT_BLOCKS
 REGIONS = {None: 1, 'q2x2': 4, 'bands3': 3}
 # a gradient below this (in 0-255 levels across 2 pixels) counts as flat
 EDGE_THRESHOLD = 20.0
@@ -90,8 +98,14 @@ _uv = np.add.outer(np.arange(8), np.arange(8)).ravel()
 FREQ_BANDS = np.zeros((64, 14), np.float32)
 FREQ_BANDS[np.arange(1, 64), _uv[1:] - 1] = 1
 FREQ_BANDS /= FREQ_BANDS.sum(axis=0)
+# which of the layout coefficients (row-major top-left DCT_KEEP x DCT_KEEP,
+# without the average) have an odd horizontal frequency: mirroring the image
+# left to right multiplies exactly these by -1. The first is the broadest
+# left-right one, positive when the left half is brighter
+ODD_U = (np.arange(1, DCT_KEEP * DCT_KEEP) % DCT_KEEP) % 2 == 1
 
-BLOCK = re.compile(r'(rgb|hsv|edges|lbp|size|freq|dct|phash)(?:@(q2x2|bands3))?(?:\*([0-9.]+))?')
+BLOCK = re.compile(r'(rgb|hsv|edges|lbp|size|freq|dctm|dctc|dct|phash)'
+                   r'(?:@(q2x2|bands3))?(?:\*([0-9.]+))?')
 
 
 def load_thumbnail(path, size=128):
@@ -121,7 +135,7 @@ def parse(spec):
         m = BLOCK.fullmatch(part)
         if not m:
             raise ValueError(f"bad block {part!r} in {spec!r}")
-        if m[1] in ('dct', 'phash') and m[2]:
+        if m[1] in LAYOUT_BLOCKS and m[2]:
             raise ValueError(f"{m[1]} describes the whole image, not @{m[2]}, in {spec!r}")
         blocks.append((m[1], m[2], float(m[3]) if m[3] else 1.0))
     total = sum(w for _, _, w in blocks)
@@ -274,6 +288,23 @@ def dct_values(coef):
     return (coef / np.sqrt((coef.astype(np.float64) ** 2).sum()))[None]
 
 
+def dctm_values(coef):
+    # a mirrored copy has the same absolute values. What is lost is how the
+    # odd coefficients' signs relate to each other, so some arrangements
+    # that are not mirror images of each other come out the same too
+    return dct_values(np.where(ODD_U, np.abs(coef), coef))
+
+
+def dctc_values(coef):
+    # keeps every sign relation, but an image that is nearly as bright left
+    # as right can fall either way, away from a copy that fell the other way
+    flip = ODD_U & (coef[ODD_U][0] < 0)
+    return dct_values(np.where(flip, -coef, coef))
+
+
+LAYOUT_VALUES = {'dct': dct_values, 'dctm': dctm_values, 'dctc': dctc_values}
+
+
 def phash_values(coef):
     if layout_is_flat(coef):
         return np.zeros((1, len(coef)))
@@ -310,10 +341,10 @@ def extract(img, osize, keys):
                 if 'freq' not in cache:
                     cache['freq'] = freq_votes(g)
                 out[name, layout] = freq_hist(cache['freq'], layout)
-            elif name in ('dct', 'phash'):
+            elif name in LAYOUT_BLOCKS:
                 if 'layout' not in cache:
                     cache['layout'] = layout_coefficients(g)
-                fn = dct_values if name == 'dct' else phash_values
+                fn = LAYOUT_VALUES.get(name, phash_values)
                 out[name, layout] = fn(cache['layout'])
             else:
                 fn = edge_hist if name == 'edges' else lbp_hist
