@@ -13,9 +13,15 @@ with the old histogram). The 12-group splits looked the same either way.
 Reading an image costs what it did before, memory per image goes down, and
 k-means got 3-5 times faster on the longer vectors.
 
-Later a layout of light and dark that ignores mirroring was added, at 1/9
-of the distance, so that brighter and mirrored copies of a photo land
-together: see [Mirror-proof layout](#mirror-proof-layout-in-groupimg-not-judged-by-eye-yet).
+Later a layout of light and dark that ignores mirroring was added, so
+that brighter and mirrored copies of a photo land together (see
+[Mirror-proof layout](#mirror-proof-layout-in-groupimg-not-judged-by-eye-yet)),
+and then how fine or coarse the detail is (see
+[Fine or coarse detail](#fine-or-coarse-detail-freq-judged-by-eye)).
+
+All of it describes how images look, not what they show: nothing here
+recognizes a truck, a cat, a person or a landscape. Labels such as "church"
+are used only as a rough secondary score.
 
 ## What changed in groupImg
 
@@ -295,22 +301,25 @@ python -I $F/duplicates.py $F/data/mix "before=$BASE" "+dctm*0.5=$BASE+dctm*0.5"
     "+dctm=$BASE+dctm" "+dctc*0.5=$BASE+dctc*0.5" "+dctc=$BASE+dctc"
 ```
 
-## Fine or coarse detail (`freq`), two versions to judge by eye
+## Fine or coarse detail (`freq`), judged by eye
 
 `freq` was the only DCT block that scored a little higher everywhere, by
 too little to ship without a look. On top of the mirror-proof layout the
-label scores can't tell its versions apart, so each is in groupImg on its
-own branch, to be judged by eye against master:
+label scores can't tell its versions apart, so two were put in groupImg,
+each on its own branch, and Victor compared their groups with master's on
+a folder of 80 photos (not in the repo):
 
-- **`freq-added`**: next to the other parts, all at equal weight (2/11
-  each, the layout 1/11).
-- **`freq-for-texture`**: in place of texture, which also looks at fine
-  detail but only one pixel around each pixel (2/9 each, the layout 1/9).
+- **`freq-added`**, next to the other parts, all at equal weight (2/11
+  each, the layout 1/11), looked a little better. **groupImg now does
+  this.**
+- **`freq-for-texture`**, in place of texture, which also looks at fine
+  detail but only one pixel around each pixel (2/9 each, the layout 1/9),
+  was dropped.
 
 | option | same class | same kind | purity k=12 / 25 / 50, mean of 4 seeds | copies: nearest is own | brighter copies in their original's group, k=50 | descriptor, ms/image | CLI, 2,000 images |
 |---|---|---|---|---|---|---|---|
-| master | 27.5% | 83.4% | 22.3 / 25.9 / 30.1% | 97% | 70% | 0.80 | 2.47 s |
-| `freq-added` | 27.4% | 83.8% | 22.2 / 25.7 / 30.1% | 98% | 78% | 1.88 | 2.85 s |
+| before | 27.5% | 83.4% | 22.3 / 25.9 / 30.1% | 97% | 70% | 0.80 | 2.47 s |
+| **`freq-added` (shipped)** | 27.4% | 83.8% | 22.2 / 25.7 / 30.1% | 98% | 78% | 1.88 | 2.85 s |
 | `freq-for-texture` | 27.0% | 83.6% | 22.6 / 25.7 / 30.0% | 98% | 76% | 1.65 | 2.37 s |
 
 All within the point or so that seeds change; `freq` at half weight scored
@@ -320,13 +329,19 @@ thumbnail and texture 0.15 ms (edges 0.29, the layout 0.03), so
 `freq-for-texture` is the fastest. The benchmark computes `freq` with
 `einsum`, which is slower than the CLI's matrix products.
 
-**This branch is `freq-added`**: `describe()` gives `rgb+rgb@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` to within 2e-7.
+`detail()` in the CLI and the GUI computes it. `describe()` gives
+`rgb+rgb@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` to within
+2e-7, with 421 values per image (1.7 KB). On the 80 photos both versions
+took 0.22-0.25 s from start to end; on the 2,000 test images, small and
+quick to decode, the extra cost shows most (2.85 s against 2.47 s). On
+camera photos, decoding (about 12 ms for 12 megapixels) should dwarf the
+0.08 ms that `freq` adds, though that wasn't measured.
 
 ```
-python -I $F/scores.py --seed 1 "master=$BASE+dctm*0.5" \
+python -I $F/scores.py --seed 1 "before=$BASE+dctm*0.5" \
     "freq added=$BASE+freq@bands3+dctm*0.5" \
     "freq for texture=rgb+rgb@bands3+edges@bands3+freq@bands3+dctm*0.5"
-python -I $F/duplicates.py $F/data/mix "master=$BASE+dctm*0.5" \
+python -I $F/duplicates.py $F/data/mix "before=$BASE+dctm*0.5" \
     "freq added=$BASE+freq@bands3+dctm*0.5" \
     "freq for texture=rgb+rgb@bands3+edges@bands3+freq@bands3+dctm*0.5"
 ```
@@ -360,11 +375,15 @@ python -I benchmarks/features/serve.py    # then open http://127.0.0.1:8765/roun
 
 ## Caveats
 
-- One judge, few votes: round 2 rests on 6 decided questions.
+- One judge, few votes: round 2 rests on 6 decided questions, and `freq`
+  on one look at one folder of 80 photos, not blind.
+- What the labels and the near-duplicate test score is close to what
+  groupImg is for, but not the same: none of it measures "looks alike"
+  directly, which is why every change was also looked at by eye.
 - The test set has photos and textures, not drawings, screenshots or icons,
   which the original use case also has. Image sizes barely vary, so the new
   `-s` and its weight weren't judged.
-- The edge and texture thresholds were set by hand, not tuned. Grainy or
+- The edge, texture and detail thresholds were set by hand, not tuned. Grainy or
   heavily compressed images count as busier.
 - Edges are measured on the 128 px thumbnail, so tiny images get different
   edge statistics from large ones and drift apart a little even without
