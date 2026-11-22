@@ -64,6 +64,10 @@ FLAT_THRESHOLD = 3.0
 DCT_SIZE = 32
 # and they keep this many lowest frequencies in each direction
 DCT_KEEP = 8
+# a layout whose broad shapes vary less than this (standard deviation, in
+# 0-255 levels) is a constant image plus rounding (about 0.00002), not an
+# image: the least varied of the 2,000 test images has 0.375
+LAYOUT_FLAT = 0.01
 
 
 def dct_matrix(n):
@@ -252,15 +256,19 @@ def layout_coefficients(g):
 
 def layout_is_flat(coef):
     # the coefficients hold the variance of the broad shapes times
-    # DCT_SIZE^2; below FLAT_THRESHOLD the image has no arrangement to speak
-    # of, only noise that would be blown up to length 1
-    return (coef.astype(np.float64) ** 2).sum() < (DCT_SIZE * FLAT_THRESHOLD) ** 2
+    # DCT_SIZE^2. Only a constant image counts as flat. A weak layout is
+    # scaled up like any other: fine regular textures (dots, studs) average
+    # out to almost nothing at 32x32, and their blown-up noise points in a
+    # random direction, as far from everything as unrelated images are.
+    # Treating them as flat made them everyone's nearest image (see README)
+    return (coef.astype(np.float64) ** 2).sum() < (DCT_SIZE * LAYOUT_FLAT) ** 2
 
 
 def dct_values(coef):
-    # length 1, so contrast doesn't count, only the arrangement. A flat
-    # image stays 0, as far from everything (1) as unrelated images are on
-    # average
+    # length 1, so contrast doesn't count, only the arrangement. A constant
+    # image has no arrangement and stays 0: squared distance 1 from every
+    # image, closer than unrelated images (2 on average), so blank images
+    # pull a little toward everything. They are rare enough to accept
     if layout_is_flat(coef):
         return np.zeros((1, len(coef)))
     return (coef / np.sqrt((coef.astype(np.float64) ** 2).sum()))[None]
