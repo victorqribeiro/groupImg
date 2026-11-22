@@ -8,14 +8,14 @@ It uses a [k-means](https://en.wikipedia.org/wiki/K-means_clustering) algorithm 
 
 groupImg puts together images that **look** alike. It doesn't know what a picture shows. It compares:
 
-- their colors, over the whole image and in its top, middle and bottom thirds (sky above, ground below)
+- their colors over the whole image, and in its top, middle and bottom thirds (sky above, ground below) whatever its brightness and contrast
 - their edges: how many there are and which way they run
 - their texture and how fine or coarse their detail is
 - where light and dark are in the picture, whatever its brightness and whichever way it faces
 
 It does **not** recognize what is in a picture: it doesn't know a truck from a cat, a person or a landscape. Two photos of cats on different backgrounds can end up in different groups, and a cat and a sofa of the same colors in the same one. Recognizing content would need a neural network, which groupImg doesn't use: it compares images with NumPy and Pillow alone.
 
-It is good at finding copies of the same photo, like the ones a file recovery tool leaves behind (see [Why ?](#why-)). In a test with 1,000 resized, re-saved, slightly cropped, brighter and mirrored copies, about 9 in 10 landed in the same group as their original, the brighter ones least often. [benchmarks/features](benchmarks/features/README.md) has how all this was chosen and tested.
+It is good at finding copies of the same photo, like the ones a file recovery tool leaves behind (see [Why ?](#why-)). In a test with 1,000 resized, re-saved, slightly cropped, brighter and mirrored copies, about 19 in 20 landed in the same group as their original, the brighter and cropped ones least often (nearly 9 in 10). [benchmarks/features](benchmarks/features/README.md) has how all this was chosen and tested.
 
 Watch it working below.
 

@@ -17,7 +17,9 @@ Later a layout of light and dark that ignores mirroring was added, so
 that brighter and mirrored copies of a photo land together (see
 [Mirror-proof layout](#mirror-proof-layout-in-groupimg-not-judged-by-eye-yet)),
 and then how fine or coarse the detail is (see
-[Fine or coarse detail](#fine-or-coarse-detail-freq-judged-by-eye)).
+[Fine or coarse detail](#fine-or-coarse-detail-freq-judged-by-eye)), and
+then colors of the thirds that ignore brightness and contrast (see
+[Colors whatever the brightness](#colors-whatever-the-brightness-rgbn-judged-by-eye)).
 
 All of it describes how images look, not what they show: nothing here
 recognizes a truck, a cat, a person or a landscape. Labels such as "church"
@@ -346,12 +348,125 @@ python -I $F/duplicates.py $F/data/mix "before=$BASE+dctm*0.5" \
     "freq for texture=rgb+rgb@bands3+edges@bands3+freq@bands3+dctm*0.5"
 ```
 
+## Colors whatever the brightness (`rgbn`), judged by eye
+
+Brighter copies were the ones groupImg found least often: 77% landed in
+their original's group at k = 50, against 89-100% for the other kinds of
+copy. Splitting the distance between a brighter copy and its original by
+part shows why. The two color histograms made 93% of it, and put the copy
+farther from its original in color (0.089) than images are from their
+nearest other image, on average (0.082): a brighter copy's colors all move
+to other bins at once.
+Edges, texture, detail and layout barely moved. The test's brighter copy
+has only 6% more contrast (1.25 x 0.85), so the fixed edge threshold
+isn't what loses it.
+
+New blocks in `descriptors.py`:
+
+- **`rgbn`** counts colors after bringing every image to the same
+  brightness and contrast: one gain and one offset, the same for the three
+  channels, move the mean and standard deviation of its gray levels to 116
+  and 54, the medians of the 2,000 test images. A copy with another
+  brightness and contrast gets the same histogram, give or take clipped
+  highlights, and hues don't change, as the channels move together.
+  Contrast is stretched at most 4 times, so the noise of a nearly blank
+  image isn't blown up into colors (1% of the test images have a spread
+  below 13.7 levels).
+- **`rgbr`**, the same by the median and the spread between the 25th and
+  75th percentiles, which clipping doesn't move as long as it stays out of
+  the middle half of the pixels.
+- **`rgbs`**, **`rgbns`**, **`rgbrs`**: `rgb`, `rgbn` and `rgbr` with soft
+  bins. Each channel value splits its vote between the two nearest of the
+  4 levels, so a small change of color moves its vote gradually.
+- **`lum`**, a histogram of the gray levels (8 soft bins), to give
+  brightness back at a weight of its own.
+
+Label scores are means of 4 seeds, copies of 3 (`--seed 1, 2, 3`, which
+also changes the 200 images copied):
+
+| option | same class | same kind | purity k=12 / 25 / 50 | brighter copies: nearest is own / same group k=12 / k=50 | cropped copies: nearest is own | all copies in their original's group, k=50 |
+|---|---|---|---|---|---|---|
+| before | 27.4% | 83.8% | 22.2 / 25.7 / 30.1% | 90 / 77 / 77% | **99%** | 93% |
+| **`rgbn` for the thirds, `rgb` for the whole image (shipped)** | **28.5%** | 83.3% | 23.2 / **27.7** / **32.7%** | 97 / 88 / 88% | 98% | 95% |
+| `rgbn` for both | 27.5% | 81.2% | **23.8** / 27.0 / 30.7% | 97 / 91 / 91% | 94% | **96%** |
+| `rgbns` for both | 27.6% | 82.3% | 22.5 / 26.6 / 30.7% | **99** / **94** / **93%** | 95% | 95% |
+| `rgbns` for the thirds, `rgb` for the whole image | 28.4% | **84.1%** | 22.5 / 26.6 / 31.0% | 97 / 89 / 89% | 98% | 95% |
+
+Normalizing both parts finds a few more brighter copies, but throws away
+how bright an image is altogether. A dark photo and a bright one of the
+same hues look alike, so do a blank black and a blank white image, and
+photos and textures get mixed up more (81.2% same kind). It also costs
+cropped copies: cutting 10% off each side changes an image's mean and
+spread, so its colors move, and 94% of cropped copies find their own
+original first instead of 99%. Keeping the whole image's histogram as it
+was leaves brightness in 2/11 of the distance instead of 4/11. It finds
+almost as many brighter copies, loses fewer cropped ones and scored
+highest on the labels: at k = 50, purity was higher than before with each
+of the 4 seeds (31.8-33.5% against 29.8-30.8%).
+
+With seed 1 only:
+
+- Soft bins alone (`rgbs`) don't help: 72% of brighter copies in their
+  original's group at k = 50. On top of `rgbn` they find a few more brighter
+  copies (table above), but lose cropped ones and score no better on
+  labels, and the two color histograms take 1.5 ms per image instead of
+  0.19, more than the whole descriptor takes now.
+- `rgbr` for both was no better than `rgbn` on brighter copies (95% nearest
+  is own, 90% same group at k = 50) and worse on cropped ones (92%), so
+  clipping isn't what keeps the rest of the brighter copies away. Soft
+  bins find a few more, so part of it is the fixed bins.
+- `rgbns` for both plus `lum` per third at half weight (1/12 of the
+  distance) gave 28.0% same class, 83.3% same kind and 89% of brighter
+  copies in their group at k = 50: about what keeping `rgb` for the whole
+  image gives, with a block more.
+
+### What changed in groupImg
+
+- **`color_levels()`** in `cli/groupimg.py` and `gui/groupImgGUI.py` makes
+  a table of the level (0-3) of every channel value 0-255 once the image is
+  brought to `COLOR_MEAN` and `COLOR_SPREAD` (`COLOR_GAIN_MAX` caps the
+  stretch), and the color histograms of the thirds look pixels up in it.
+  The whole image's histogram is as it was. `describe()` gives
+  `rgb+rgbn@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` to within
+  2e-7, with the same 421 values per image.
+- The descriptor takes 0.87 ms per thumbnail instead of 0.76. Reading the
+  2,000 test images takes 2.54 s instead of 2.27 (median of 5); they are
+  small and quick to decode, so this is where the cost shows most.
+  Clustering them takes 0.3 s either way. On the 80 photos, groupImg takes
+  about 0.25 s from start to end either way.
+- On the 80 photos (k = 5), two runs of the same version share only 38-47%
+  of the pairs of images they group together, as k-means starts at random,
+  and the new version shares 39% with the old (`rgbn` for both: 33%). One
+  run of each is not enough to tell them apart by eye.
+
+```
+R="edges@bands3+lbp@bands3+freq@bands3+dctm*0.5"
+for s in 1 2 3 4; do python -I $F/scores.py --seed $s "before=rgb+rgb@bands3+$R" \
+    "thirds=rgb+rgbn@bands3+$R" "both=rgbn+rgbn@bands3+$R" \
+    "both soft=rgbns+rgbns@bands3+$R" "thirds soft=rgb+rgbns@bands3+$R"; done
+for s in 1 2 3; do python -I $F/duplicates.py --seed $s $F/data/mix "before=rgb+rgb@bands3+$R" \
+    "thirds=rgb+rgbn@bands3+$R" "both=rgbn+rgbn@bands3+$R" \
+    "both soft=rgbns+rgbns@bands3+$R" "thirds soft=rgb+rgbns@bands3+$R"; done
+python -I $F/duplicates.py $F/data/mix "soft=rgbs+rgbs@bands3+$R" \
+    "robust=rgbr+rgbr@bands3+$R" "both soft+lum=rgbns+rgbns@bands3+$R+lum@bands3*0.5"
+```
+
+Victor compared the groups of the versions on the 80 photos, not blind,
+and the thirds version looked better. groupImg now does this.
+
+### Next
+
+- The brighter copies change by one gain and one offset. Real edits also
+  bend the tone curve (gamma, auto levels) or shift the white balance,
+  which this doesn't undo; that wasn't tested.
+
 ## Files
 
 - `descriptors.py`: every block tried, as configs such as
   `rgb+rgb@bands3+edges@bands3+lbp@bands3` (see its docstring).
-  `describe()` in the CLI gives exactly what
-  `rgb+rgb@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` gives.
+  `describe()` in the CLI gives what
+  `rgb+rgbn@bands3+edges@bands3+lbp@bands3+freq@bands3+dctm*0.5` gives, to
+  within 2e-7.
 - `make_mix.py`: builds the test set from the two downloads.
 - `cache.py`: decodes a folder once into 128 px thumbnails and 256 px copies
   for the pages.
@@ -376,7 +491,7 @@ python -I benchmarks/features/serve.py    # then open http://127.0.0.1:8765/roun
 ## Caveats
 
 - One judge, few votes: round 2 rests on 6 decided questions, and `freq`
-  on one look at one folder of 80 photos, not blind.
+  and `rgbn` on one look each at one folder of 80 photos, not blind.
 - What the labels and the near-duplicate test score is close to what
   groupImg is for, but not the same: none of it measures "looks alike"
   directly, which is why every change was also looked at by eye.
@@ -384,7 +499,8 @@ python -I benchmarks/features/serve.py    # then open http://127.0.0.1:8765/roun
   which the original use case also has. Image sizes barely vary, so the new
   `-s` and its weight weren't judged.
 - The edge, texture and detail thresholds were set by hand, not tuned. Grainy or
-  heavily compressed images count as busier.
+  heavily compressed images count as busier. So was the cap on how much
+  `rgbn` stretches contrast; its targets are the test images' medians.
 - Edges are measured on the 128 px thumbnail, so tiny images get different
   edge statistics from large ones and drift apart a little even without
   `-s`.

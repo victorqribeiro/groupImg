@@ -3,7 +3,25 @@
 A descriptor is a list of blocks. Each block is one histogram of the whole
 image, or one per region of it:
 
-  rgb     joint RGB histogram, 4 bins per channel (64). groupImg uses it now.
+  rgb     joint RGB histogram, 4 bins per channel (64). groupImg uses it for
+          the whole image.
+  rgbs    rgb with soft bins: each channel value splits its vote between the
+          two nearest bin centres (32, 96, 160, 224), so a pixel votes in up
+          to 8 bins and a small change of color moves its vote gradually
+  rgbn    rgb of the image with its brightness and contrast normalized: the
+          same gain and offset on all three channels bring the mean and
+          standard deviation of its gray levels to NORM_MEAN and NORM_STD.
+          A copy with another brightness and contrast gets the same
+          histogram, give or take clipping. Hues are kept, as all channels
+          move together. groupImg uses it for the thirds (@bands3)
+  rgbns   rgbn with soft bins
+  rgbr    rgbn, normalized by the median and the spread between the 25th and 75th
+          percentiles of the gray levels (to NORM_MEDIAN and NORM_IQR),
+          which clipped highlights or shadows don't move as long as they
+          stay above the 75th percentile or below the 25th: clipping keeps
+          the order of the pixels
+  rgbrs   rgbr with soft bins
+  lum     brightness: histogram of the gray levels, 8 soft bins (8)
   hsv     52 bins: black, 3 grays, then 12 hues x 2 saturations x 2 values
   edges   gradient orientation: 8 unsigned directions plus 1 "flat" bin
   lbp     rotation-invariant uniform local binary patterns (10 bins)
@@ -43,15 +61,16 @@ The dct blocks and phash are already vectors of length 1 (squared distance
 square-rooted, as dct has negative values.
 
 The prefix "raw:" skips the square root and keeps histograms in percent,
-exactly as groupImg does now.
+exactly as groupImg did at first.
 """
 import math
 import re
 import numpy as np
 from PIL import Image, ImageOps, ExifTags
 
-BINS = {'rgb': 64, 'hsv': 52, 'edges': 9, 'lbp': 10, 'size': 2,
-        'freq': 15, 'dct': 63, 'dctm': 63, 'dctc': 63, 'phash': 63}
+BINS = {'rgb': 64, 'rgbs': 64, 'rgbn': 64, 'rgbns': 64, 'rgbr': 64, 'rgbrs': 64,
+        'lum': 8, 'hsv': 52, 'edges': 9, 'lbp': 10, 'size': 2, 'freq': 15,
+        'dct': 63, 'dctm': 63, 'dctc': 63, 'phash': 63}
 # blocks made from the layout coefficients, which describe the whole image
 LAYOUT_BLOCKS = ('dct', 'dctm', 'dctc', 'phash')
 # blocks that are vectors already, not histograms to normalize
@@ -76,6 +95,19 @@ DCT_KEEP = 8
 # 0-255 levels) is a constant image plus rounding (about 0.00002), not an
 # image: the least varied of the 2,000 test images has 0.375
 LAYOUT_FLAT = 0.01
+# rgbn brings the gray levels of every image to this mean and standard
+# deviation, the medians of the 2,000 test images (116.2 and 53.6)
+NORM_MEAN = 116.0
+NORM_STD = 54.0
+# but stretches contrast at most this much, so a nearly flat image (1% of
+# the test images vary less than 13.7 levels) isn't blown up into noise
+NORM_GAIN_MAX = 4.0
+# rgbr brings the median and the 25th-75th percentile spread to these, the
+# medians of the 2,000 test images (112.6 and 72.7)
+NORM_MEDIAN = 113.0
+NORM_IQR = 73.0
+# blocks that are color histograms
+COLOR_BLOCKS = ('rgb', 'rgbs', 'rgbn', 'rgbns', 'rgbr', 'rgbrs', 'hsv')
 
 
 def dct_matrix(n):
@@ -104,7 +136,7 @@ FREQ_BANDS /= FREQ_BANDS.sum(axis=0)
 # left-right one, positive when the left half is brighter
 ODD_U = (np.arange(1, DCT_KEEP * DCT_KEEP) % DCT_KEEP) % 2 == 1
 
-BLOCK = re.compile(r'(rgb|hsv|edges|lbp|size|freq|dctm|dctc|dct|phash)'
+BLOCK = re.compile(r'(rgbns|rgbn|rgbrs|rgbr|rgbs|rgb|lum|hsv|edges|lbp|size|freq|dctm|dctc|dct|phash)'
                    r'(?:@(q2x2|bands3))?(?:\*([0-9.]+))?')
 
 
@@ -167,6 +199,64 @@ def count(codes, regions, nregions, nbins, weights=None):
 def rgb_codes(img):
     q = img >> 6
     return (q[..., 0].astype(np.intp) << 4) | (q[..., 1] << 2) | q[..., 2]
+
+
+def normalize(img, robust=False):
+    """img with the same gain and offset on all channels, so that its gray
+    levels have mean NORM_MEAN and standard deviation NORM_STD, or with
+    robust, median NORM_MEDIAN and 25th-75th percentile spread NORM_IQR.
+    As float."""
+    g = img @ LUMA
+    if robust:
+        low, centre, high = np.percentile(g, [25, 50, 75])
+        spread, target, target_spread = high - low, NORM_MEDIAN, NORM_IQR
+    else:
+        centre, spread, target, target_spread = g.mean(), g.std(), NORM_MEAN, NORM_STD
+    gain = min(target_spread / max(float(spread), 1e-6), NORM_GAIN_MAX)
+    return np.clip((img - float(centre)) * gain + target, 0, 255)
+
+
+def soft_codes(values, nbins):
+    """Soft bins of values from 0 to 255: the two nearest of nbins bin
+    centres of every value, and how much of its vote each gets."""
+    pos = np.clip(values * (nbins / 256) - 0.5, 0, nbins - 1)
+    low = np.minimum(pos.astype(np.intp), nbins - 2)
+    frac = (pos - low).astype(np.float32)
+    return low, frac
+
+
+def soft_rgb_codes(img):
+    """The 8 bins each pixel votes in and their weights, each (8, h, w)."""
+    lows, fracs = zip(*(soft_codes(img[..., c], 4) for c in range(3)))
+    codes, weights = [], []
+    for dr in (0, 1):
+        for dg in (0, 1):
+            for db in (0, 1):
+                codes.append(((lows[0] + dr) << 4) | ((lows[1] + dg) << 2) | (lows[2] + db))
+                weights.append((fracs[0] if dr else 1 - fracs[0]) *
+                               (fracs[1] if dg else 1 - fracs[1]) *
+                               (fracs[2] if db else 1 - fracs[2]))
+    return np.stack(codes), np.stack(weights)
+
+
+def color_codes(img, name):
+    """Codes of a color block, and their weights for soft bins (else None)."""
+    if name == 'hsv':
+        return hsv_codes(img), None
+    if name == 'rgb':
+        return rgb_codes(img), None
+    if name in ('rgbn', 'rgbns', 'rgbr', 'rgbrs'):
+        pixels = normalize(img, robust=name.startswith('rgbr'))
+    else:
+        pixels = img.astype(np.float32)
+    if name in ('rgbs', 'rgbns', 'rgbrs'):
+        return soft_rgb_codes(pixels)
+    return rgb_codes(np.minimum(pixels, 255).astype(np.uint8)), None
+
+
+def lum_codes(g):
+    low, frac = soft_codes(g, 8)
+    return np.stack([low, low + 1]), np.stack([1 - frac, frac])
 
 
 def hsv_codes(img):
@@ -328,16 +418,23 @@ def extract(img, osize, keys):
     for name, layout in keys:
         if name == 'size':
             out[name, layout] = size_values(osize)
-        elif name in ('rgb', 'hsv'):
+        elif name in COLOR_BLOCKS:
             if name not in cache:
-                cache[name] = rgb_codes(img) if name == 'rgb' else hsv_codes(img)
-            out[name, layout] = count(cache[name], region_map(h, w, layout),
-                                      REGIONS[layout], BINS[name])
+                cache[name] = color_codes(img, name)
+            codes, weights = cache[name]
+            out[name, layout] = count(codes, region_map(h, w, layout),
+                                      REGIONS[layout], BINS[name], weights)
         else:
             if 'gray' not in cache:
                 cache['gray'] = img @ LUMA
             g = cache['gray']
-            if name == 'freq':
+            if name == 'lum':
+                if 'lum' not in cache:
+                    cache['lum'] = lum_codes(g)
+                codes, weights = cache['lum']
+                out[name, layout] = count(codes, region_map(h, w, layout),
+                                          REGIONS[layout], BINS[name], weights)
+            elif name == 'freq':
                 if 'freq' not in cache:
                     cache['freq'] = freq_votes(g)
                 out[name, layout] = freq_hist(cache['freq'], layout)
