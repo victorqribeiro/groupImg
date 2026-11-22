@@ -46,6 +46,17 @@ LAYOUT_FLAT = 0.01
 # an 8x8 block whose pixels vary less than this (in 0-255 levels) has no
 # detail, so JPEG noise isn't taken for fine detail
 DETAIL_FLAT = 3
+# the color histograms of the thirds see every image at the same brightness
+# and contrast: one gain and one offset, the same for the three channels,
+# bring the mean and spread (standard deviation) of its gray levels to
+# these, the medians of the 2,000 benchmark images. A brighter or darker
+# copy of a photo then has the same colors, give or take clipped
+# highlights, and hues don't change, as the three channels move together
+COLOR_MEAN = 116
+COLOR_SPREAD = 54
+# but contrast is stretched at most this much, so the JPEG noise of a
+# nearly blank image isn't blown up into colors
+COLOR_GAIN_MAX = 4
 
 def dct_matrix(n):
   # the discrete cosine transform JPEG uses, as a matrix: the frequencies
@@ -68,6 +79,20 @@ _uv = np.add.outer(np.arange(8), np.arange(8)).ravel()
 BANDS = np.zeros((64, 14), np.float32)
 BANDS[np.arange(1, 64), _uv[1:] - 1] = 1
 BANDS /= BANDS.sum(axis=0)
+
+def color_levels(gray):
+  # the level (0-3) of each channel value 0-255 in the color histograms of
+  # the thirds, once the image is brought to COLOR_MEAN and COLOR_SPREAD, as
+  # a table to look pixels up in. Without it a brighter copy's colors would
+  # all move to other bins at once
+  gain = min(COLOR_SPREAD / max(float(gray.std()), 1e-6), COLOR_GAIN_MAX)
+  levels = (np.arange(256) - float(gray.mean())) * gain + COLOR_MEAN
+  return np.clip(levels // 64, 0, 3).astype(np.uint8)
+
+def color_codes(levels):
+  # bin of every pixel in a 64-bin histogram of color, from the levels
+  # (0-3) of its three channels
+  return (levels[..., 0] << 4) | (levels[..., 1] << 2) | levels[..., 2]
 
 def per_band(codes, nbins, weights=None):
   # one histogram of the codes in each horizontal third of the image
@@ -147,15 +172,17 @@ def layout(gray):
 def describe(pixels, size=None):
   # feature vector of an image, from a height x width x 3 array of RGB
   # values: histograms of color (4 levels per channel, 64 bins), edges,
-  # texture and detail, each divided by its count and square-rooted. The squared
-  # distance between two images is then twice their Hellinger distance,
-  # which unlike plain histograms doesn't let one big background color
-  # outweigh everything else. Then the layout of light and dark. With -s,
-  # size is the log of the area and of the aspect ratio of the original image
-  q = pixels >> 6
-  color = per_band((q[..., 0].astype(np.intp) << 4) | (q[..., 1] << 2) | q[..., 2], 64)
-  parts = [color.sum(axis=0, keepdims=True), color]
+  # texture and detail, each divided by its count and square-rooted. The
+  # squared distance between two images is then twice their Hellinger
+  # distance, which unlike plain histograms doesn't let one big background
+  # color outweigh everything else. Then the layout of light and dark. With
+  # -s, size is the log of the area and of the aspect ratio of the original
+  # image
   gray = pixels @ LUMA
+  # the colors of the whole image as they are, so how bright it is still
+  # counts, and those of each third whatever its brightness and contrast
+  parts = [np.bincount(color_codes(pixels >> 6).ravel(), minlength=64)[None],
+           per_band(color_codes(np.take(color_levels(gray), pixels)), 64)]
   if min(gray.shape) < 3 :
     # too small to have edges or texture: all flat
     parts += [np.tile(np.eye(9)[8], (3, 1)), np.tile(np.eye(10)[0], (3, 1))]
